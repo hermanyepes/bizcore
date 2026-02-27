@@ -1,0 +1,50 @@
+# ============================================================
+# BizCore — Archivos que Git debe ignorar
+# ============================================================
+
+# --- Entorno virtual de Python ---
+# .venv tiene todas las librerías instaladas. Son cientos de MB
+# y son específicas de cada máquina. Cada desarrollador crea
+# su propio .venv con: python -m venv .venv && pip install -r requirements.txt
+.venv/
+venv/
+env/
+
+# --- Variables de entorno (¡CRÍTICO!) ---
+# .env contiene contraseñas y claves secretas.
+# Si se sube a GitHub, cualquiera puede ver tus credenciales.
+# .env.example SÍ se sube — es la plantilla sin valores reales.
+.env
+
+# --- Archivos compilados de Python ---
+# Python genera estos archivos automáticamente al ejecutar el código.
+# Son específicos de cada máquina y siempre se pueden regenerar.
+__pycache__/
+*.py[cod]
+*.pyo
+
+# --- Herramientas de testing ---
+# Caché de pytest y reportes de cobertura de código.
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- Distribución de Python ---
+# Archivos generados al empaquetar la aplicación para publicar
+# en PyPI. No aplica para un backend web, pero es buena práctica.
+dist/
+build/
+*.egg-info/
+
+# --- IDEs y editores ---
+# Configuración personal de tu editor. Cada desarrollador tiene
+# la suya — no tiene sentido compartirla.
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Sistema operativo ---
+# Archivos ocultos que Windows y macOS crean automáticamente.
+Thumbs.db
+.DS_Store

@@ -1,0 +1,47 @@
+# ============================================================
+# BizCore — Dependencias de producción
+# ============================================================
+# Para instalar: pip install -r requirements.txt
+#
+# Por qué dos archivos de requirements?
+# - requirements.txt     → solo lo que la app necesita para CORRER
+# - requirements-dev.txt → herramientas para DESARROLLAR y TESTEAR
+# Separar esto es una buena práctica: en producción no necesitas
+# pytest ni otras herramientas de desarrollo.
+# ============================================================
+
+# --- Framework web ---
+# fastapi[standard] incluye uvicorn (el servidor ASGI), httpx para
+# el cliente de pruebas interno, y python-multipart para formularios.
+# "ASGI" = Asynchronous Server Gateway Interface (el protocolo que
+# permite a FastAPI ser async).
+fastapi[standard]>=0.115.0
+
+# --- Base de datos ---
+# SQLAlchemy: el ORM. La versión 2.0+ tiene soporte async nativo.
+# asyncpg: el driver de PostgreSQL para Python async (es rápido
+# porque está escrito en C, no en Python puro).
+# greenlet: requerido por SQLAlchemy async internamente.
+sqlalchemy[asyncio]>=2.0.0
+asyncpg>=0.30.0
+greenlet>=3.0.0
+
+# --- Migraciones ---
+# Alembic: control de versiones para el schema de la base de datos.
+# Si agregas una columna nueva, Alembic genera un archivo Python que
+# describe ese cambio. Así todos los entornos quedan sincronizados.
+alembic>=1.14.0
+
+# --- Configuración y variables de entorno ---
+# pydantic-settings lee variables de entorno y archivos .env y las
+# convierte en un objeto Python tipado. Así no hardcodeas URLs ni
+# contraseñas en el código.
+pydantic-settings>=2.7.0
+
+# --- Autenticación ---
+# python-jose: genera y verifica tokens JWT.
+# bcrypt: hashea contraseñas. Usamos bcrypt directamente (sin passlib)
+# porque passlib lleva años sin mantenimiento y es incompatible con
+# bcrypt >= 4.0. bcrypt directo es más simple y está activamente mantenido.
+python-jose[cryptography]>=3.3.0
+bcrypt>=4.0.0

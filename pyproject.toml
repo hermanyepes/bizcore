@@ -1,0 +1,55 @@
+# ============================================================
+# BizCore — Configuración del proyecto Python
+# ============================================================
+# pyproject.toml es el archivo estándar moderno de configuración
+# para proyectos Python. Reemplaza setup.py, setup.cfg, y otros
+# archivos de configuración de herramientas como tox.ini, .flake8.
+#
+# En este archivo configuramos:
+# - ruff: el linter/formateador de código
+# - pytest: el framework de testing
+# ============================================================
+
+[tool.ruff]
+# La longitud máxima de línea que acepta ruff antes de considerar
+# que es demasiado largo. 88 es el estándar que popularizó Black.
+line-length = 88
+
+# Target version de Python para que ruff sepa qué sintaxis es válida
+target-version = "py313"
+
+[tool.ruff.lint]
+# Qué reglas activar:
+# E, W = errores y warnings de estilo (equivalente a pycodestyle/flake8)
+# F = errores de Pyflakes (imports no usados, variables no definidas)
+# I = isort (orden de imports)
+# UP = pyupgrade (sugiere sintaxis moderna de Python)
+select = ["E", "W", "F", "I", "UP"]
+
+# Excepciones: algunas reglas que preferimos ignorar
+ignore = [
+    "E501",  # line-too-long: lo maneja el formatter, no el linter
+]
+
+[tool.ruff.lint.isort]
+# El orden de imports que queremos:
+# 1. Librería estándar de Python (os, sys, etc.)
+# 2. Librerías de terceros (fastapi, sqlalchemy, etc.)
+# 3. Módulos locales (app.core, app.models, etc.)
+# Ruff con isort ordena automáticamente en estos grupos.
+known-first-party = ["app"]
+
+
+[tool.pytest.ini_options]
+# Dónde están los tests
+testpaths = ["tests"]
+
+# asyncio_mode = "auto" le dice a pytest-asyncio que trate todas
+# las funciones async como tests async automáticamente.
+# Sin esto, tendríamos que decorar cada test con @pytest.mark.asyncio
+asyncio_mode = "auto"
+
+# Mostrar output de print() durante los tests (útil para debugging)
+# -v = verbose (muestra el nombre de cada test)
+# -s = no capturar stdout (muestra los print())
+addopts = "-v"

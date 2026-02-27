@@ -1,0 +1,26 @@
+# ============================================================
+# BizCore — Dependencias de desarrollo y testing
+# ============================================================
+# Para instalar: pip install -r requirements-dev.txt
+# (Instala este archivo ADICIONAL al requirements.txt, no en vez de él)
+# ============================================================
+
+# Incluye primero las dependencias de producción
+-r requirements.txt
+
+# --- Testing ---
+# pytest: el framework de testing más popular en Python.
+# pytest-asyncio: permite escribir tests async (nuestros endpoints
+#                 son async, así que los tests también deben serlo).
+# httpx: cliente HTTP que httpx le permite a pytest hacer peticiones
+#        reales a nuestra API durante los tests de integración.
+# coverage: mide qué porcentaje del código está cubierto por tests.
+pytest>=8.0.0
+pytest-asyncio>=0.24.0
+httpx>=0.28.0
+coverage>=7.0.0
+
+# --- Calidad de código ---
+# ruff: linter y formateador moderno de Python (reemplaza flake8 + black).
+#       Detecta problemas de estilo, imports no usados, variables sin usar, etc.
+ruff>=0.9.0
