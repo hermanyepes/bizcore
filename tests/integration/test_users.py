@@ -26,8 +26,7 @@
 #
 # ============================================================
 
-import pytest
-from httpx import AsyncClient
+import httpx
 
 from app.models.user import User
 
@@ -49,7 +48,7 @@ NUEVO_USUARIO = {
 # ============================================================
 
 
-async def test_listar_usuarios_sin_token_devuelve_401(client: AsyncClient):
+async def test_listar_usuarios_sin_token_devuelve_401(client: httpx.AsyncClient):
     """
     GET /users sin token debe devolver 401.
 
@@ -61,7 +60,7 @@ async def test_listar_usuarios_sin_token_devuelve_401(client: AsyncClient):
 
 
 async def test_listar_usuarios_con_token_admin(
-    client: AsyncClient, admin_token: str, admin_user: User
+    client: httpx.AsyncClient, admin_token: str, admin_user: User
 ):
     """
     GET /users con token válido debe devolver 200 y respuesta paginada.
@@ -89,7 +88,7 @@ async def test_listar_usuarios_con_token_admin(
 
 
 async def test_listar_usuarios_con_token_empleado(
-    client: AsyncClient, employee_token: str
+    client: httpx.AsyncClient, employee_token: str
 ):
     """
     GET /users con token de Empleado debe devolver 200.
@@ -110,7 +109,7 @@ async def test_listar_usuarios_con_token_empleado(
 
 
 async def test_obtener_usuario_existente(
-    client: AsyncClient, admin_token: str, admin_user: User
+    client: httpx.AsyncClient, admin_token: str, admin_user: User
 ):
     """
     GET /users/{id} con un document_id que existe debe devolver 200
@@ -133,7 +132,7 @@ async def test_obtener_usuario_existente(
 
 
 async def test_obtener_usuario_inexistente_devuelve_404(
-    client: AsyncClient, admin_token: str
+    client: httpx.AsyncClient, admin_token: str
 ):
     """
     GET /users/{id} con un document_id que NO existe debe devolver 404.
@@ -149,7 +148,7 @@ async def test_obtener_usuario_inexistente_devuelve_404(
     assert response.status_code == 404
 
 
-async def test_obtener_usuario_sin_token_devuelve_401(client: AsyncClient):
+async def test_obtener_usuario_sin_token_devuelve_401(client: httpx.AsyncClient):
     """GET /users/{id} sin token debe devolver 401."""
     response = await client.get("/api/v1/users/1000000001")
     assert response.status_code == 401
@@ -161,7 +160,7 @@ async def test_obtener_usuario_sin_token_devuelve_401(client: AsyncClient):
 
 
 async def test_crear_usuario_como_admin_devuelve_201(
-    client: AsyncClient, admin_token: str, admin_user: User
+    client: httpx.AsyncClient, admin_token: str, admin_user: User
 ):
     """
     POST /users con token de Administrador debe crear el usuario
@@ -186,7 +185,7 @@ async def test_crear_usuario_como_admin_devuelve_201(
 
 
 async def test_crear_usuario_como_empleado_devuelve_403(
-    client: AsyncClient, employee_token: str
+    client: httpx.AsyncClient, employee_token: str
 ):
     """
     POST /users con token de Empleado debe devolver 403 Forbidden.
@@ -201,14 +200,14 @@ async def test_crear_usuario_como_empleado_devuelve_403(
     assert response.status_code == 403
 
 
-async def test_crear_usuario_sin_token_devuelve_401(client: AsyncClient):
+async def test_crear_usuario_sin_token_devuelve_401(client: httpx.AsyncClient):
     """POST /users sin token debe devolver 401."""
     response = await client.post("/api/v1/users/", json=NUEVO_USUARIO)
     assert response.status_code == 401
 
 
 async def test_crear_usuario_email_duplicado_devuelve_409(
-    client: AsyncClient, admin_token: str, admin_user: User
+    client: httpx.AsyncClient, admin_token: str, admin_user: User
 ):
     """
     POST /users con un email que ya existe en la BD debe devolver 409 Conflict.
@@ -231,7 +230,7 @@ async def test_crear_usuario_email_duplicado_devuelve_409(
 
 
 async def test_crear_usuario_document_id_duplicado_devuelve_409(
-    client: AsyncClient, admin_token: str, admin_user: User
+    client: httpx.AsyncClient, admin_token: str, admin_user: User
 ):
     """
     POST /users con un document_id que ya existe debe devolver 409.
@@ -249,7 +248,7 @@ async def test_crear_usuario_document_id_duplicado_devuelve_409(
 
 
 async def test_crear_usuario_datos_invalidos_devuelve_422(
-    client: AsyncClient, admin_token: str
+    client: httpx.AsyncClient, admin_token: str
 ):
     """
     POST /users con datos inválidos (email malformado, rol inválido)
@@ -273,7 +272,7 @@ async def test_crear_usuario_datos_invalidos_devuelve_422(
 
 
 async def test_actualizar_usuario_como_admin(
-    client: AsyncClient, admin_token: str, admin_user: User
+    client: httpx.AsyncClient, admin_token: str, admin_user: User
 ):
     """
     PUT /users/{id} con token de Administrador debe actualizar
@@ -296,7 +295,7 @@ async def test_actualizar_usuario_como_admin(
 
 
 async def test_actualizar_usuario_inexistente_devuelve_404(
-    client: AsyncClient, admin_token: str
+    client: httpx.AsyncClient, admin_token: str
 ):
     """PUT /users/{id} con document_id inexistente debe devolver 404."""
     response = await client.put(
@@ -308,7 +307,7 @@ async def test_actualizar_usuario_inexistente_devuelve_404(
 
 
 async def test_actualizar_usuario_como_empleado_devuelve_403(
-    client: AsyncClient, employee_token: str, admin_user: User
+    client: httpx.AsyncClient, employee_token: str, admin_user: User
 ):
     """PUT /users/{id} con token de Empleado debe devolver 403."""
     response = await client.put(
@@ -325,7 +324,7 @@ async def test_actualizar_usuario_como_empleado_devuelve_403(
 
 
 async def test_desactivar_usuario_como_admin(
-    client: AsyncClient, admin_token: str, employee_user: User
+    client: httpx.AsyncClient, admin_token: str, employee_user: User
 ):
     """
     DELETE /users/{id} con token de Administrador debe:
@@ -345,7 +344,7 @@ async def test_desactivar_usuario_como_admin(
 
 
 async def test_desactivar_usuario_inexistente_devuelve_404(
-    client: AsyncClient, admin_token: str
+    client: httpx.AsyncClient, admin_token: str
 ):
     """DELETE /users/{id} con document_id inexistente debe devolver 404."""
     response = await client.delete(
@@ -356,7 +355,7 @@ async def test_desactivar_usuario_inexistente_devuelve_404(
 
 
 async def test_desactivar_usuario_como_empleado_devuelve_403(
-    client: AsyncClient, employee_token: str, employee_user: User
+    client: httpx.AsyncClient, employee_token: str, employee_user: User
 ):
     """DELETE /users/{id} con token de Empleado debe devolver 403."""
     response = await client.delete(
@@ -366,7 +365,7 @@ async def test_desactivar_usuario_como_empleado_devuelve_403(
     assert response.status_code == 403
 
 
-async def test_desactivar_usuario_sin_token_devuelve_401(client: AsyncClient):
+async def test_desactivar_usuario_sin_token_devuelve_401(client: httpx.AsyncClient):
     """DELETE /users/{id} sin token debe devolver 401."""
     response = await client.delete("/api/v1/users/1000000001")
     assert response.status_code == 401

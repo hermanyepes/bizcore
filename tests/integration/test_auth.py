@@ -18,13 +18,11 @@
 
 from datetime import UTC, datetime
 
-import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
 from app.models.user import User
-
 
 # ============================================================
 # Happy path — credenciales correctas
