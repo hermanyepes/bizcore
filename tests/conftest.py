@@ -38,6 +38,7 @@ from app.core.database import Base
 from app.core.security import hash_password
 from app.dependencies import get_db
 from app.main import app
+from app.models.inventory_movement import InventoryMovement
 from app.models.product import Product
 from app.models.user import User
 
@@ -246,3 +247,32 @@ async def employee_token(client: AsyncClient, employee_user: User) -> str:
     )
     assert response.status_code == 200, f"Login de empleado falló: {response.json()}"
     return response.json()["access_token"]
+
+
+@pytest.fixture
+async def inventory_movement(
+    db: AsyncSession,
+    product: Product,
+    admin_user: User,
+) -> InventoryMovement:
+    """
+    Movimiento de inventario de prueba disponible en la BD antes de cada test.
+
+    Lo insertamos directo (sin pasar por POST /inventory) para no hacer
+    que los tests de GET dependan del endpoint de creación.
+
+    Depende de `product` y `admin_user` porque InventoryMovement requiere
+    FK válidas a ambas tablas.
+    """
+    movement = InventoryMovement(
+        product_id=product.id,
+        movement_type="ENTRADA",
+        quantity=50,
+        notes="Movimiento de prueba",
+        created_by_id=admin_user.document_id,
+        created_at=datetime.now(UTC),
+    )
+    db.add(movement)
+    await db.commit()
+    await db.refresh(movement)
+    return movement
