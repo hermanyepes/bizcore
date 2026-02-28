@@ -38,6 +38,7 @@ from app.core.database import Base
 from app.core.security import hash_password
 from app.dependencies import get_db
 from app.main import app
+from app.models.product import Product
 from app.models.user import User
 
 # URL de la BD de prueba — SQLite en memoria, desaparece al terminar el test
@@ -206,6 +207,34 @@ async def admin_token(client: AsyncClient, admin_user: User) -> str:
     )
     assert response.status_code == 200, f"Login de admin falló: {response.json()}"
     return response.json()["access_token"]
+
+
+@pytest.fixture
+async def product(db: AsyncSession):
+    """
+    Producto de prueba disponible en la BD antes de cada test.
+
+    Lo insertamos directo (sin pasar por POST /products) por la misma
+    razón que admin_user: los tests de productos no deben depender
+    de que el endpoint de creación funcione correctamente.
+
+    ¿Por qué created_at explícito?
+    SQLite no tiene server_default=func.now() de PostgreSQL.
+    Seteando el valor desde Python evitamos el error "NOT NULL constraint".
+    """
+    p = Product(
+        name="Café Especial",
+        description="Café de origen colombiano",
+        price=15000,
+        stock=100,
+        category="Bebidas",
+        is_active=True,
+        created_at=datetime.now(UTC),
+    )
+    db.add(p)
+    await db.commit()
+    await db.refresh(p)
+    return p
 
 
 @pytest.fixture
