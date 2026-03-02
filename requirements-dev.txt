@@ -19,6 +19,8 @@ pytest>=8.0.0
 pytest-asyncio>=0.24.0
 httpx>=0.28.0
 coverage>=7.0.0
+pytest-cov>=7.0.0  # integración de coverage con pytest (--cov flag)
+aiosqlite>=0.20.0  # driver async para SQLite — BD de prueba en memoria
 
 # --- Calidad de código ---
 # ruff: linter y formateador moderno de Python (reemplaza flake8 + black).
