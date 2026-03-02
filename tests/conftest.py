@@ -40,6 +40,7 @@ from app.dependencies import get_db
 from app.main import app
 from app.models.inventory_movement import InventoryMovement
 from app.models.product import Product
+from app.models.supplier import Supplier
 from app.models.user import User
 
 # URL de la BD de prueba — SQLite en memoria, desaparece al terminar el test
@@ -247,6 +248,32 @@ async def employee_token(client: AsyncClient, employee_user: User) -> str:
     )
     assert response.status_code == 200, f"Login de empleado falló: {response.json()}"
     return response.json()["access_token"]
+
+
+@pytest.fixture
+async def supplier(db: AsyncSession):
+    """
+    Proveedor de prueba disponible en la BD antes de cada test.
+
+    Lo insertamos directo (sin pasar por POST /suppliers) para que
+    los tests de GET y PUT no dependan del endpoint de creación.
+
+    ¿Por qué created_at explícito?
+    SQLite no tiene server_default=func.now() de PostgreSQL.
+    Seteando el valor desde Python evitamos el error "NOT NULL constraint".
+    """
+    s = Supplier(
+        name="Distribuidora El Maíz",
+        contact_email="ventas@maiz.com",
+        phone="601 555 1234",
+        address="Calle 80 # 20-15, Bogotá",
+        is_active=True,
+        created_at=datetime.now(UTC),
+    )
+    db.add(s)
+    await db.commit()
+    await db.refresh(s)
+    return s
 
 
 @pytest.fixture
