@@ -39,6 +39,7 @@ from app.core.security import hash_password
 from app.dependencies import get_db
 from app.main import app
 from app.models.inventory_movement import InventoryMovement
+from app.models.order import Order, OrderItem
 from app.models.product import Product
 from app.models.supplier import Supplier
 from app.models.user import User
@@ -274,6 +275,56 @@ async def supplier(db: AsyncSession):
     await db.commit()
     await db.refresh(s)
     return s
+
+
+@pytest.fixture
+async def order(
+    db: AsyncSession,
+    supplier: Supplier,
+    product: Product,
+    admin_user: User,
+) -> Order:
+    """
+    Pedido de prueba con un ítem, disponible en la BD antes de cada test.
+
+    Depende de `supplier`, `product` y `admin_user` porque Order
+    requiere FKs válidas a las tres tablas.
+
+    Lo insertamos directo (sin pasar por POST /orders) para que los
+    tests de GET, PUT y DELETE no dependan del endpoint de creación.
+
+    ¿Por qué re-fetcheamos con selectinload al final?
+    Después del commit, `order.items` está expirado en async SQLAlchemy.
+    Re-fetchear con selectinload garantiza que el fixture devuelve un
+    objeto con los ítems listos para usar en los tests.
+    """
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    order_item = OrderItem(
+        product_id=product.id,
+        quantity=2,
+        unit_price=product.price,
+        subtotal=2 * product.price,
+        # order_id lo asigna SQLAlchemy automáticamente via cascade
+    )
+
+    o = Order(
+        supplier_id=supplier.id,
+        created_by_id=admin_user.document_id,
+        status="PENDIENTE",
+        notes="Pedido de prueba",
+        items=[order_item],
+        created_at=datetime.now(UTC),
+    )
+    db.add(o)
+    await db.commit()
+
+    # Re-fetch con items cargados para que el fixture sea completamente usable
+    result = await db.execute(
+        select(Order).options(selectinload(Order.items)).where(Order.id == o.id)
+    )
+    return result.scalar_one()
 
 
 @pytest.fixture
