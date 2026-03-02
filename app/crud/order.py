@@ -39,7 +39,6 @@ from sqlalchemy.orm import selectinload
 from app.models.order import Order
 from app.schemas.order import OrderUpdate
 
-
 # ============================================================
 # GET — Consultas de lectura
 # ============================================================

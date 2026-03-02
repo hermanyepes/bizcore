@@ -33,10 +33,9 @@
 from datetime import UTC, datetime
 
 import httpx
-import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.product import Product
-from sqlalchemy.ext.asyncio import AsyncSession
 
 # Datos de ejemplo para crear un producto nuevo en los tests de POST
 NUEVO_PRODUCTO = {

@@ -33,7 +33,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 # ============================================================
 # Schemas de INPUT — lo que el cliente envía
 # ============================================================

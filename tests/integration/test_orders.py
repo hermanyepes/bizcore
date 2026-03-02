@@ -20,14 +20,12 @@
 
 from datetime import UTC, datetime
 
-import pytest
 from httpx import AsyncClient
 
 from app.models.order import Order
 from app.models.product import Product
 from app.models.supplier import Supplier
 from app.models.user import User
-
 
 # ============================================================
 # GET /api/v1/orders — Listar pedidos

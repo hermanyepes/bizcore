@@ -33,10 +33,9 @@
 from datetime import UTC, datetime
 
 import httpx
-import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.supplier import Supplier
-from sqlalchemy.ext.asyncio import AsyncSession
 
 # Datos de ejemplo para crear un proveedor nuevo en los tests de POST
 NUEVO_PROVEEDOR = {

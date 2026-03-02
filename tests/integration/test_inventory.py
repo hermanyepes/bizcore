@@ -36,13 +36,10 @@
 from datetime import UTC, datetime
 
 import httpx
-import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.inventory_movement import InventoryMovement
 from app.models.product import Product
-from app.models.user import User
-from sqlalchemy.ext.asyncio import AsyncSession
-
 
 # ============================================================
 # GET /api/v1/inventory/ — Listar movimientos

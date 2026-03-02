@@ -26,7 +26,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.inventory_movement import InventoryMovement
 from app.schemas.inventory_movement import InventoryMovementCreate
 
-
 # ============================================================
 # GET — Consultas de lectura
 # ============================================================
