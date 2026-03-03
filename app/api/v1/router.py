@@ -19,7 +19,7 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import auth, inventory, orders, products, suppliers, users
+from app.api.v1 import auth, dashboard, inventory, orders, products, suppliers, users
 
 router = APIRouter(prefix="/api/v1")
 
@@ -29,3 +29,4 @@ router.include_router(products.router)
 router.include_router(inventory.router)
 router.include_router(suppliers.router)
 router.include_router(orders.router)
+router.include_router(dashboard.router)
