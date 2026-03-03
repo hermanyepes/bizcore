@@ -30,7 +30,7 @@
 from collections.abc import AsyncGenerator
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,11 +39,10 @@ from app.core.database import AsyncSessionLocal
 from app.core.security import decode_access_token
 from app.models.user import User
 
-# OAuth2PasswordBearer le dice a FastAPI que el token viene en el
-# header `Authorization: Bearer <token>`. Además hace que el
-# endpoint aparezca con un candado en Swagger (/docs).
-# tokenUrl: la URL donde el cliente obtiene el token (el login).
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+# HTTPBearer le dice a FastAPI que el token viene en el header
+# `Authorization: Bearer <token>`. En Swagger muestra un campo
+# simple donde pegas el token directamente — sin formulario de login.
+http_bearer = HTTPBearer()
 
 
 # ============================================================
@@ -75,7 +74,7 @@ async def get_db() -> AsyncGenerator[AsyncSession]:
 # get_current_user — Verificar JWT y devolver usuario activo
 # ============================================================
 async def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    credentials: HTTPAuthorizationCredentials = Depends(http_bearer),
     db: AsyncSession = Depends(get_db),
 ) -> User:
     """
@@ -101,6 +100,8 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
 
+    # credentials.credentials contiene solo el token (sin la palabra "Bearer")
+    token = credentials.credentials
     try:
         payload = decode_access_token(token)
         user_id: str | None = payload.get("sub")
