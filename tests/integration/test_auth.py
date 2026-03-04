@@ -152,3 +152,42 @@ async def test_login_email_formato_invalido_devuelve_422(client: AsyncClient):
         json={"email": "esto-no-es-un-email", "password": "Admin1234"},
     )
     assert response.status_code == 422
+
+
+# ============================================================
+# Rate limiting — protección contra fuerza bruta
+# ============================================================
+
+
+async def test_login_rate_limit_bloquea_al_sexto_intento(
+    client: AsyncClient, admin_user: User
+):
+    """
+    El endpoint /login tiene un límite de 5 intentos por minuto por IP.
+
+    Después de 5 intentos (fallidos o exitosos), el 6to debe devolver
+    429 Too Many Requests sin importar si las credenciales son correctas.
+
+    ¿Por qué esto es importante?
+    Sin rate limiting, un atacante puede probar miles de contraseñas
+    por minuto automáticamente (ataque de fuerza bruta). Con el límite,
+    solo puede probar 5 por minuto — hace el ataque impráctico.
+
+    Nota: el fixture `reset_rate_limiter` (autouse=True en conftest.py)
+    resetea los contadores antes de este test, garantizando que
+    empieza desde cero sin interferencia de otros tests.
+    """
+    # Hacer 5 intentos válidos — todos deben pasar (200)
+    for _ in range(5):
+        response = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "admin@test.com", "password": "Admin1234"},
+        )
+        assert response.status_code == 200
+
+    # El 6to intento debe ser bloqueado por el rate limiter
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@test.com", "password": "Admin1234"},
+    )
+    assert response.status_code == 429

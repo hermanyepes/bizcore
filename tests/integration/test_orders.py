@@ -554,3 +554,94 @@ async def test_cancelar_pedido_inexistente_devuelve_404(
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert response.status_code == 404
+
+
+# ============================================================
+# Validación de parámetros de paginación
+# ============================================================
+
+
+async def test_listar_pedidos_page_cero_devuelve_422(
+    client: AsyncClient, admin_token: str
+):
+    """GET /orders?page=0 debe devolver 422 (mínimo es 1)."""
+    response = await client.get(
+        "/api/v1/orders/?page=0",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 422
+
+
+async def test_listar_pedidos_page_size_cero_devuelve_422(
+    client: AsyncClient, admin_token: str
+):
+    """GET /orders?page_size=0 debe devolver 422 (mínimo es 1)."""
+    response = await client.get(
+        "/api/v1/orders/?page_size=0",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 422
+
+
+async def test_listar_pedidos_page_size_excesivo_devuelve_422(
+    client: AsyncClient, admin_token: str
+):
+    """GET /orders?page_size=101 debe devolver 422 (máximo es 100)."""
+    response = await client.get(
+        "/api/v1/orders/?page_size=101",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 422
+
+
+# ============================================================
+# Filtros de listado
+# ============================================================
+
+
+async def test_filtrar_pedidos_por_status(
+    client: AsyncClient,
+    admin_token: str,
+    order: Order,
+) -> None:
+    """
+    GET /orders/?status=PENDIENTE devuelve solo pedidos con ese status.
+
+    El fixture `order` crea un pedido con status=PENDIENTE.
+    Filtramos por ese status y verificamos que todos los ítems coincidan.
+    """
+    response = await client.get(
+        "/api/v1/orders/?status=PENDIENTE",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["total"] >= 1
+    # Todos los pedidos devueltos deben tener el status solicitado
+    for item in data["items"]:
+        assert item["status"] == "PENDIENTE"
+
+
+async def test_filtrar_pedidos_status_inexistente_devuelve_lista_vacia(
+    client: AsyncClient,
+    admin_token: str,
+    order: Order,
+) -> None:
+    """
+    GET /orders/?status=COMPLETADO cuando solo hay pedidos PENDIENTE
+    devuelve total=0 e items=[].
+
+    El fixture solo crea un pedido PENDIENTE. Buscar COMPLETADO no debe encontrar nada.
+    """
+    response = await client.get(
+        "/api/v1/orders/?status=COMPLETADO",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["total"] == 0
+    assert data["items"] == []

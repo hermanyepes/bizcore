@@ -460,3 +460,100 @@ async def test_desactivar_proveedor_inexistente_devuelve_404(
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert response.status_code == 404
+
+
+# ============================================================
+# updated_at — columna de auditoría
+# ============================================================
+
+
+async def test_filtrar_proveedores_activos(
+    client: httpx.AsyncClient, admin_token: str, supplier: Supplier
+):
+    """
+    GET /suppliers?is_active=true debe devolver solo los proveedores activos.
+    El fixture `supplier` está activo, así que debe aparecer.
+    """
+    response = await client.get(
+        "/api/v1/suppliers/?is_active=true",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0]["is_active"] is True
+
+
+async def test_filtrar_proveedores_inactivos_devuelve_lista_vacia(
+    client: httpx.AsyncClient, admin_token: str, supplier: Supplier
+):
+    """
+    GET /suppliers?is_active=false — el fixture está activo, así que
+    la lista de inactivos debe estar vacía.
+    """
+    response = await client.get(
+        "/api/v1/suppliers/?is_active=false",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 0
+    assert data["items"] == []
+
+
+async def test_updated_at_se_llena_despues_de_actualizar(
+    client: httpx.AsyncClient, admin_token: str, supplier: Supplier
+):
+    """
+    Después de un PUT, updated_at debe aparecer en el response (no ser null).
+
+    Al crear: updated_at=None.
+    Al hacer PUT: updated_at=<timestamp actual>.
+    """
+    response = await client.put(
+        f"/api/v1/suppliers/{supplier.id}",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"phone": "3001234567"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["updated_at"] is not None
+
+
+# ============================================================
+# Validación de parámetros de paginación
+# ============================================================
+
+
+async def test_listar_proveedores_page_cero_devuelve_422(
+    client: httpx.AsyncClient, admin_token: str
+):
+    """GET /suppliers?page=0 debe devolver 422 (mínimo es 1)."""
+    response = await client.get(
+        "/api/v1/suppliers/?page=0",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 422
+
+
+async def test_listar_proveedores_page_size_cero_devuelve_422(
+    client: httpx.AsyncClient, admin_token: str
+):
+    """GET /suppliers?page_size=0 debe devolver 422 (mínimo es 1)."""
+    response = await client.get(
+        "/api/v1/suppliers/?page_size=0",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 422
+
+
+async def test_listar_proveedores_page_size_excesivo_devuelve_422(
+    client: httpx.AsyncClient, admin_token: str
+):
+    """GET /suppliers?page_size=101 debe devolver 422 (máximo es 100)."""
+    response = await client.get(
+        "/api/v1/suppliers/?page_size=101",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 422

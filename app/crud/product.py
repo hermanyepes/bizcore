@@ -57,40 +57,39 @@ async def get_products(
     db: AsyncSession,
     skip: int = 0,
     limit: int = 10,
+    is_active: bool | None = None,
+    category: str | None = None,
 ) -> tuple[list[Product], int]:
     """
-    Devuelve una página de productos activos + el total de registros activos.
+    Devuelve una página de productos + el total de registros.
 
-    ¿Por qué skip y limit y no page y page_size?
-    skip y limit son los parámetros nativos de SQL (OFFSET y LIMIT).
-    La conversión de page → skip la hace el endpoint:
-        skip = (page - 1) * page_size
+    Filtros opcionales:
+    - is_active: True → solo activos, False → solo inactivos, None → todos
+    - category: 'Bebidas' | 'Snacks' | None → todas las categorías
 
-    ¿Por qué filtramos is_active=True?
-    Los productos desactivados (soft delete) no deben aparecer en el
-    catálogo. Son invisibles para el cliente, pero siguen en la BD.
-
-    ¿Por qué dos queries?
-    Son dos preguntas distintas a la BD:
-    1. "Dame los productos de esta página" → select con limit/offset
-    2. "¿Cuántos productos activos hay en total?" → select count(*)
-    Sin el total no podemos calcular cuántas páginas existen.
+    ¿Por qué None como default (ya no filtramos is_active=True siempre)?
+    El catálogo público puede usar ?is_active=true para ver solo los
+    disponibles. La vista de administración puede ver todos incluyendo
+    los desactivados. El frontend elige qué filtrar según el contexto.
     """
-    # Query 1: los productos activos de esta página
-    products_result = await db.execute(
-        select(Product)
-        .where(Product.is_active == True)  # noqa: E712
-        .offset(skip)
-        .limit(limit)
-    )
+    # Construir la query base — sin filtros aún
+    base_query = select(Product)
+    count_query = select(func.count()).select_from(Product)
+
+    # Aplicar filtros opcionales
+    if is_active is not None:
+        base_query = base_query.where(Product.is_active == is_active)  # noqa: E712
+        count_query = count_query.where(Product.is_active == is_active)  # noqa: E712
+    if category is not None:
+        base_query = base_query.where(Product.category == category)
+        count_query = count_query.where(Product.category == category)
+
+    # Query 1: los productos de esta página
+    products_result = await db.execute(base_query.offset(skip).limit(limit))
     products = list(products_result.scalars().all())
 
-    # Query 2: el total de productos activos en la BD
-    count_result = await db.execute(
-        select(func.count())
-        .select_from(Product)
-        .where(Product.is_active == True)  # noqa: E712
-    )
+    # Query 2: el total (con los mismos filtros, sin limit/offset)
+    count_result = await db.execute(count_query)
     total = count_result.scalar_one()
 
     return products, total

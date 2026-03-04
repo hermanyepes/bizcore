@@ -9,9 +9,10 @@
 #
 # ============================================================
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.limiter import limiter
 from app.core.security import create_access_token, verify_password
 from app.crud.user import get_user_by_email
 from app.dependencies import get_db
@@ -24,7 +25,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=TokenResponse)
+@limiter.limit("5/minute")
 async def login(
+    request: Request,        # requerido por slowapi para leer la IP del cliente
     data: LoginRequest,
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:

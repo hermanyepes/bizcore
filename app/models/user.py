@@ -95,3 +95,22 @@ class User(Base):
         server_default=func.now(),
         nullable=False,
     )
+    # ----------------------------------------------------------
+    # Última modificación (columna de auditoría estándar)
+    #
+    # onupdate=func.now(): SQLAlchemy incluye automáticamente
+    # `updated_at = NOW()` en cada UPDATE que genera el ORM.
+    # No necesita intervención manual — pasa transparentemente.
+    #
+    # nullable=True: empieza en NULL (el usuario fue creado pero
+    # nunca actualizado). Se llena en el primer PUT.
+    #
+    # ¿Por qué no server_default? Porque NO queremos que se llene
+    # en el INSERT — solo en UPDATE. server_default lo llenaría
+    # siempre, incluso al crear.
+    # ----------------------------------------------------------
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        onupdate=func.now(),
+        nullable=True,
+    )

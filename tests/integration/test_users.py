@@ -5,6 +5,7 @@
 # Probamos los 5 endpoints de usuarios:
 #
 #   GET    /api/v1/users/            → listar (paginado)
+#   GET    /api/v1/users/me          → perfil del usuario logueado
 #   GET    /api/v1/users/{id}        → obtener uno
 #   POST   /api/v1/users/            → crear (solo Administrador)
 #   PUT    /api/v1/users/{id}        → actualizar (solo Administrador)
@@ -101,6 +102,70 @@ async def test_listar_usuarios_con_token_empleado(
         headers={"Authorization": f"Bearer {employee_token}"},
     )
     assert response.status_code == 200
+
+
+# ============================================================
+# GET /api/v1/users/me — Perfil del usuario logueado
+# ============================================================
+
+
+async def test_obtener_perfil_propio_como_admin(
+    client: httpx.AsyncClient, admin_token: str, admin_user: User
+):
+    """
+    GET /users/me con token de Administrador debe devolver
+    los datos del propio administrador — sin necesitar su document_id.
+
+    Verificamos que los datos del response coinciden con el fixture admin_user.
+    """
+    response = await client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    # El response debe coincidir con el usuario cuyo JWT se usó
+    assert data["document_id"] == admin_user.document_id
+    assert data["email"] == admin_user.email
+    assert data["role"] == admin_user.role
+    assert data["full_name"] == admin_user.full_name
+    # La contraseña nunca debe aparecer
+    assert "password_hash" not in data
+    assert "password" not in data
+
+
+async def test_obtener_perfil_propio_como_empleado(
+    client: httpx.AsyncClient, employee_token: str, employee_user: User
+):
+    """
+    GET /users/me con token de Empleado también debe devolver 200.
+
+    /me no requiere Administrador — cualquier usuario autenticado
+    tiene derecho a ver su propio perfil.
+    """
+    response = await client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": f"Bearer {employee_token}"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["document_id"] == employee_user.document_id
+    assert data["role"] == "Empleado"
+
+
+async def test_obtener_perfil_propio_sin_token_devuelve_401(client: httpx.AsyncClient):
+    """
+    GET /users/me sin token debe devolver 401.
+
+    Sin JWT, get_current_user no puede identificar al usuario
+    y lanza HTTPException(401) antes de llegar al endpoint.
+    """
+    response = await client.get("/api/v1/users/me")
+    assert response.status_code == 401
 
 
 # ============================================================
@@ -369,3 +434,104 @@ async def test_desactivar_usuario_sin_token_devuelve_401(client: httpx.AsyncClie
     """DELETE /users/{id} sin token debe devolver 401."""
     response = await client.delete("/api/v1/users/1000000001")
     assert response.status_code == 401
+
+
+# ============================================================
+# Validación de parámetros de paginación
+# ============================================================
+
+
+async def test_updated_at_se_llena_despues_de_actualizar(
+    client: httpx.AsyncClient, admin_token: str, admin_user: User
+):
+    """
+    Después de un PUT, updated_at debe aparecer en el response (no ser null).
+
+    Al crear: updated_at=None (nunca fue actualizado).
+    Al hacer PUT: updated_at=<timestamp actual>.
+    """
+    response = await client.put(
+        f"/api/v1/users/{admin_user.document_id}",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"city": "Cali"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    # updated_at debe estar presente y no ser null
+    assert data["updated_at"] is not None
+
+
+async def test_filtrar_usuarios_por_rol(
+    client: httpx.AsyncClient, admin_token: str, admin_user: User, employee_user: User
+):
+    """
+    GET /users?role=Administrador debe devolver solo los administradores.
+
+    La BD de prueba tiene exactamente un admin y un empleado.
+    Filtrar por role=Administrador debe devolver solo uno.
+    """
+    response = await client.get(
+        "/api/v1/users/?role=Administrador",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0]["role"] == "Administrador"
+
+
+async def test_filtrar_usuarios_activos(
+    client: httpx.AsyncClient, admin_token: str, admin_user: User, employee_user: User
+):
+    """
+    GET /users?is_active=true debe devolver solo los usuarios activos.
+    Ambos fixtures son activos, así que el total debe ser 2.
+    """
+    response = await client.get(
+        "/api/v1/users/?is_active=true",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 2
+    for item in data["items"]:
+        assert item["is_active"] is True
+
+
+async def test_listar_usuarios_page_cero_devuelve_422(
+    client: httpx.AsyncClient, admin_token: str
+):
+    """
+    GET /users?page=0 debe devolver 422.
+
+    Query(ge=1) le dice a Pydantic que el mínimo es 1.
+    page=0 viola esa restricción → Pydantic rechaza antes del endpoint.
+    """
+    response = await client.get(
+        "/api/v1/users/?page=0",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 422
+
+
+async def test_listar_usuarios_page_size_cero_devuelve_422(
+    client: httpx.AsyncClient, admin_token: str
+):
+    """GET /users?page_size=0 debe devolver 422 (mínimo es 1)."""
+    response = await client.get(
+        "/api/v1/users/?page_size=0",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 422
+
+
+async def test_listar_usuarios_page_size_excesivo_devuelve_422(
+    client: httpx.AsyncClient, admin_token: str
+):
+    """GET /users?page_size=101 debe devolver 422 (máximo es 100)."""
+    response = await client.get(
+        "/api/v1/users/?page_size=101",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 422

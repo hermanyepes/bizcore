@@ -106,3 +106,14 @@ class Product(Base):
         server_default=func.now(),
         nullable=False,
     )
+    # ----------------------------------------------------------
+    # Última modificación — mismo patrón que User.updated_at
+    #
+    # onupdate=func.now(): se llena automáticamente en cada UPDATE.
+    # nullable=True: NULL hasta el primer PUT sobre este producto.
+    # ----------------------------------------------------------
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        onupdate=func.now(),
+        nullable=True,
+    )

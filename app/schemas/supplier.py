@@ -91,6 +91,7 @@ class SupplierResponse(BaseModel):
     address: str | None
     is_active: bool
     created_at: datetime
+    updated_at: datetime | None  # NULL si nunca fue actualizado
 
     model_config = ConfigDict(from_attributes=True)
 

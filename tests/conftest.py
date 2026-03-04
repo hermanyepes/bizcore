@@ -35,6 +35,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.database import Base
+from app.core.limiter import limiter
 from app.core.security import hash_password
 from app.dependencies import get_db
 from app.main import app
@@ -46,6 +47,29 @@ from app.models.user import User
 
 # URL de la BD de prueba — SQLite en memoria, desaparece al terminar el test
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+
+
+# ============================================================
+# Fixture: reset_rate_limiter
+# ============================================================
+# autouse=True: se ejecuta automáticamente en CADA test, sin
+# que los tests tengan que pedirlo explícitamente.
+#
+# ¿Por qué es necesario?
+# El limiter es un singleton a nivel de módulo — su estado
+# (los contadores de requests por IP) persiste entre tests.
+# Sin este reset, los fixtures `admin_token` y `employee_token`
+# llaman a /login una vez por test, y después de 5 tests el
+# limiter bloquearía todos los logins siguientes con 429.
+#
+# El reset limpia todos los contadores antes de cada test,
+# garantizando que cada test empiece con slate limpio.
+# ============================================================
+@pytest.fixture(autouse=True)
+async def reset_rate_limiter():
+    """Resetea los contadores de rate limit antes de cada test."""
+    limiter._storage.reset()
+    yield
 
 
 # ============================================================

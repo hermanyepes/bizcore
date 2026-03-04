@@ -102,6 +102,7 @@ class ProductResponse(BaseModel):
     category: str | None
     is_active: bool
     created_at: datetime
+    updated_at: datetime | None  # NULL si nunca fue actualizado
 
     # Permite crear este schema desde un objeto SQLAlchemy:
     # ProductResponse.model_validate(product_obj)

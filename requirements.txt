@@ -45,3 +45,9 @@ pydantic-settings>=2.7.0
 # bcrypt >= 4.0. bcrypt directo es más simple y está activamente mantenido.
 python-jose[cryptography]>=3.3.0
 bcrypt>=4.0.0
+
+# --- Rate limiting ---
+# slowapi: rate limiting para FastAPI, inspirado en Flask-Limiter.
+# Usa la librería `limits` internamente para contar solicitudes por IP.
+# Previene ataques de fuerza bruta en endpoints sensibles como /login.
+slowapi>=0.1.9

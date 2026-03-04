@@ -25,7 +25,7 @@
 
 import math
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.crud import supplier as supplier_crud
@@ -49,27 +49,24 @@ router = APIRouter(prefix="/suppliers", tags=["suppliers"])
 # ============================================================
 @router.get("/", response_model=SupplierPaginated)
 async def list_suppliers(
-    page: int = 1,
-    page_size: int = 10,
+    page: int = Query(default=1, ge=1),               # mínimo página 1
+    page_size: int = Query(default=10, ge=1, le=100), # entre 1 y 100 registros
+    is_active: bool | None = Query(default=None),     # True/False/None (todos)
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),  # cualquier usuario autenticado
+    current_user: User = Depends(get_current_user),   # cualquier usuario autenticado
 ) -> SupplierPaginated:
     """
-    Lista todos los proveedores activos con paginación.
+    Lista proveedores con paginación y filtro opcional.
 
     GET /api/v1/suppliers?page=1&page_size=10
-
-    Solo devuelve proveedores con is_active=True.
-    ¿Por qué cualquier usuario autenticado puede listar?
-    Los empleados también necesitan consultar proveedores
-    para coordinar pedidos. Crear, editar y eliminar sí
-    requiere ser Administrador.
+    GET /api/v1/suppliers?is_active=true    ← solo activos
+    GET /api/v1/suppliers?is_active=false   ← solo desactivados (admin)
     """
-    # Convertir page/page_size a skip/limit (parámetros nativos de SQL)
-    # Ejemplo: page=2, page_size=10 → skip=10 (saltar los primeros 10)
     skip = (page - 1) * page_size
 
-    suppliers, total = await supplier_crud.get_suppliers(db, skip=skip, limit=page_size)
+    suppliers, total = await supplier_crud.get_suppliers(
+        db, skip=skip, limit=page_size, is_active=is_active
+    )
 
     # math.ceil redondea hacia arriba: 11 proveedores / 10 por página = 2 páginas
     pages = math.ceil(total / page_size) if total > 0 else 0

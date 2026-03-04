@@ -11,7 +11,6 @@ Uso:
 import asyncio
 
 from app.core.database import Base, engine
-import app.models  # registra todos los modelos en Base.metadata
 
 
 async def create_all_tables():
