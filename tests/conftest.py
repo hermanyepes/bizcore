@@ -237,6 +237,17 @@ async def admin_token(client: AsyncClient, admin_user: User) -> str:
 
 
 @pytest.fixture
+async def admin_refresh_token(client: AsyncClient, admin_user: User) -> str:
+    """Refresh token válido de un Administrador (para tests de /refresh y /logout)."""
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@test.com", "password": "Admin1234"},
+    )
+    assert response.status_code == 200, f"Login de admin falló: {response.json()}"
+    return response.json()["refresh_token"]
+
+
+@pytest.fixture
 async def product(db: AsyncSession):
     """
     Producto de prueba disponible en la BD antes de cada test.
