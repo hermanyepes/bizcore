@@ -409,3 +409,94 @@ async def test_registrar_movimiento_cantidad_invalida_devuelve_422(
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert response.status_code == 422
+
+
+# ============================================================
+# Validación de parámetros de paginación
+# ============================================================
+
+
+async def test_listar_movimientos_page_cero_devuelve_422(
+    client: httpx.AsyncClient, admin_token: str
+):
+    """GET /inventory?page=0 debe devolver 422 (mínimo es 1)."""
+    response = await client.get(
+        "/api/v1/inventory/?page=0",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 422
+
+
+async def test_listar_movimientos_page_size_cero_devuelve_422(
+    client: httpx.AsyncClient, admin_token: str
+):
+    """GET /inventory?page_size=0 debe devolver 422 (mínimo es 1)."""
+    response = await client.get(
+        "/api/v1/inventory/?page_size=0",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 422
+
+
+async def test_listar_movimientos_page_size_excesivo_devuelve_422(
+    client: httpx.AsyncClient, admin_token: str
+):
+    """GET /inventory?page_size=101 debe devolver 422 (máximo es 100)."""
+    response = await client.get(
+        "/api/v1/inventory/?page_size=101",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 422
+
+
+# ============================================================
+# Filtros de listado
+# ============================================================
+
+
+async def test_filtrar_movimientos_por_tipo(
+    client: httpx.AsyncClient,
+    admin_token: str,
+    inventory_movement: InventoryMovement,
+):
+    """
+    GET /inventory/?movement_type=ENTRADA devuelve solo movimientos de tipo ENTRADA.
+
+    El fixture `inventory_movement` crea un movimiento de tipo ENTRADA.
+    Filtramos por ese tipo y verificamos que todos los ítems coincidan.
+    """
+    response = await client.get(
+        "/api/v1/inventory/?movement_type=ENTRADA",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["total"] >= 1
+    # Todos los movimientos devueltos deben ser de tipo ENTRADA
+    for item in data["items"]:
+        assert item["movement_type"] == "ENTRADA"
+
+
+async def test_filtrar_movimientos_tipo_inexistente_devuelve_lista_vacia(
+    client: httpx.AsyncClient,
+    admin_token: str,
+    inventory_movement: InventoryMovement,
+):
+    """
+    GET /inventory/?movement_type=SALIDA cuando solo hay movimientos ENTRADA
+    devuelve total=0 e items=[].
+
+    El fixture solo crea un movimiento ENTRADA. Buscar SALIDA no debe encontrar nada.
+    """
+    response = await client.get(
+        "/api/v1/inventory/?movement_type=SALIDA",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["total"] == 0
+    assert data["items"] == []

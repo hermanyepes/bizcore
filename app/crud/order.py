@@ -67,33 +67,33 @@ async def get_orders(
     skip: int = 0,
     limit: int = 10,
     supplier_id: int | None = None,
+    status: str | None = None,
 ) -> tuple[list[Order], int]:
     """
     Devuelve una página de pedidos + el total de registros.
 
-    ¿Para qué sirve `supplier_id` opcional?
-    Permite filtrar pedidos por proveedor.
-    Si se envía, devuelve solo los pedidos de ese proveedor.
-    Si no se envía (None), devuelve todos los pedidos del sistema.
+    Filtros opcionales:
+    - supplier_id: filtra pedidos de un proveedor específico
+    - status: 'PENDIENTE' | 'RECIBIDO' | 'CANCELADO' | None (todos)
 
-    Esto permite dos endpoints con la misma función:
-      GET /api/v1/orders                    → todos los pedidos
-      GET /api/v1/orders?supplier_id=3      → solo pedidos del proveedor 3
+    Ambos filtros son independientes y se pueden combinar:
+      GET /api/v1/orders?supplier_id=3&status=PENDIENTE
+      → solo pedidos pendientes del proveedor 3
 
     Los pedidos se ordenan del más reciente al más antiguo (created_at DESC).
-
-    ¿Por qué no filtramos por status?
-    El administrador necesita ver todos los pedidos, incluyendo cancelados.
-    Si en el futuro se necesita filtrar por status, se agrega el parámetro aquí.
     """
-    # Construimos las queries base — reutilizamos el patrón de inventory y suppliers
+    # Construimos las queries base — sin filtros aún
     base_query = select(Order).options(selectinload(Order.items))
     count_query = select(func.count()).select_from(Order)
 
-    # Si se especifica proveedor, filtramos en ambas queries
+    # Aplicar filtros opcionales
     if supplier_id is not None:
         base_query = base_query.where(Order.supplier_id == supplier_id)
         count_query = count_query.where(Order.supplier_id == supplier_id)
+    # status: 'PENDIENTE' | 'RECIBIDO' | 'CANCELADO'
+    if status is not None:
+        base_query = base_query.where(Order.status == status)
+        count_query = count_query.where(Order.status == status)
 
     # Query 1: pedidos de esta página, del más reciente al más antiguo
     orders_result = await db.execute(

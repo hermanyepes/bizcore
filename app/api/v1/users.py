@@ -24,7 +24,7 @@
 
 import math
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.crud import user as user_crud
@@ -43,32 +43,28 @@ router = APIRouter(prefix="/users", tags=["users"])
 # ============================================================
 @router.get("/", response_model=UserPaginated)
 async def list_users(
-    page: int = 1,
-    page_size: int = 10,
+    page: int = Query(default=1, ge=1),               # mínimo página 1
+    page_size: int = Query(default=10, ge=1, le=100), # entre 1 y 100 registros
+    is_active: bool | None = Query(default=None),     # True/False/None (todos)
+    role: str | None = Query(default=None),           # 'Administrador'/'Empleado'/None
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),  # cualquier usuario autenticado
+    current_user: User = Depends(get_current_user),   # cualquier usuario autenticado
 ) -> UserPaginated:
     """
-    Lista todos los usuarios con paginación.
+    Lista usuarios con paginación y filtros opcionales.
 
     GET /api/v1/users?page=1&page_size=10
+    GET /api/v1/users?is_active=true&role=Empleado
+    GET /api/v1/users?is_active=false   ← ver usuarios desactivados
 
-    ¿Qué son los query parameters?
-    Son los parámetros después del ? en la URL.
-    FastAPI los mapea automáticamente a los argumentos de la función
-    cuando el argumento NO está en el path (/{algo}).
-
-    ¿Por qué `current_user` está aquí si no lo usamos?
-    Porque Depends(get_current_user) tiene dos efectos:
-    1. Verifica el JWT y lanza 401 si es inválido/ausente
-    2. Devuelve el usuario — aquí no lo necesitamos,
-       pero declarar el Depends es suficiente para proteger el endpoint.
+    Filtros opcionales — si no se envían, devuelve todos los registros.
+    Se pueden combinar: ?is_active=true&role=Administrador
     """
-    # Convertir page/page_size a skip/limit (los parámetros nativos de SQL)
-    # Ejemplo: page=2, page_size=10 → skip=10 (saltar los primeros 10)
     skip = (page - 1) * page_size
 
-    users, total = await user_crud.get_users(db, skip=skip, limit=page_size)
+    users, total = await user_crud.get_users(
+        db, skip=skip, limit=page_size, is_active=is_active, role=role
+    )
 
     # math.ceil redondea hacia arriba: 11 usuarios / 10 por página = 2 páginas
     pages = math.ceil(total / page_size) if total > 0 else 0
@@ -80,6 +76,37 @@ async def list_users(
         page_size=page_size,
         pages=pages,
     )
+
+
+# ============================================================
+# GET /api/v1/users/me — Perfil del usuario logueado
+# ============================================================
+# IMPORTANTE: esta ruta DEBE estar antes de /{document_id}.
+# FastAPI evalúa rutas en orden de declaración. Si /{document_id}
+# llegara primero, "/me" sería interpretado como document_id="me"
+# y devolvería 404 en vez de entrar a este endpoint.
+@router.get("/me", response_model=UserResponse)
+async def get_me(
+    current_user: User = Depends(get_current_user),
+) -> UserResponse:
+    """
+    Devuelve el perfil del usuario actualmente autenticado.
+
+    GET /api/v1/users/me
+    Requiere: JWT válido (cualquier rol)
+
+    ¿Por qué no necesita db aquí?
+    get_current_user ya hizo la query a la BD para validar el token.
+    El objeto `current_user` que nos entrega ya es el usuario completo
+    de PostgreSQL — no hay que volver a buscarlo.
+
+    ¿Por qué el frontend necesita este endpoint?
+    En la navbar de Angular se mostrará "Hola, Juan Pérez (Administrador)".
+    Sin este endpoint, Angular tendría que saber el document_id del usuario
+    para hacer GET /users/{id}. Con /me solo necesita el token.
+    """
+    # El JWT ya contiene la identidad — simplemente retornamos el usuario
+    return UserResponse.model_validate(current_user)
 
 
 # ============================================================

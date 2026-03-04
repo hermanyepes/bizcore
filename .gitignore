@@ -48,3 +48,4 @@ build/
 # Archivos ocultos que Windows y macOS crean automáticamente.
 Thumbs.db
 .DS_Store
+AUDIT.md

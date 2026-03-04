@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     # Opcional: 15 minutos es el estándar de seguridad
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    # Opcional: 7 días es el estándar de industria para refresh tokens.
+    # Balance entre seguridad (si lo roban, tiene ventana limitada) y
+    # comodidad (el usuario no tiene que volver a hacer login cada semana).
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # --- CORS ---
     # Lista de orígenes permitidos. pydantic-settings convierte

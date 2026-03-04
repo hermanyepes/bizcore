@@ -420,3 +420,102 @@ async def test_desactivar_producto_inexistente_devuelve_404(
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert response.status_code == 404
+
+
+# ============================================================
+# updated_at — columna de auditoría
+# ============================================================
+
+
+async def test_filtrar_productos_por_categoria(
+    client: httpx.AsyncClient, admin_token: str, product: Product
+):
+    """
+    GET /products?category=Bebidas debe devolver solo productos de esa categoría.
+
+    El fixture `product` tiene category='Bebidas'.
+    Un producto con otra categoría no debe aparecer en el resultado.
+    """
+    response = await client.get(
+        "/api/v1/products/?category=Bebidas",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0]["category"] == "Bebidas"
+
+
+async def test_filtrar_productos_categoria_inexistente_devuelve_lista_vacia(
+    client: httpx.AsyncClient, admin_token: str, product: Product
+):
+    """
+    GET /products?category=Electrodomésticos no debe devolver ningún producto.
+    El total debe ser 0 y la lista vacía.
+    """
+    response = await client.get(
+        "/api/v1/products/?category=Electrodomésticos",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 0
+    assert data["items"] == []
+
+
+async def test_updated_at_se_llena_despues_de_actualizar(
+    client: httpx.AsyncClient, admin_token: str, product: Product
+):
+    """
+    Después de un PUT, updated_at debe aparecer en el response (no ser null).
+
+    Al crear: updated_at=None.
+    Al hacer PUT: updated_at=<timestamp actual>.
+    """
+    response = await client.put(
+        f"/api/v1/products/{product.id}",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"price": 99000},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["updated_at"] is not None
+
+
+# ============================================================
+# Validación de parámetros de paginación
+# ============================================================
+
+
+async def test_listar_productos_page_cero_devuelve_422(
+    client: httpx.AsyncClient, admin_token: str
+):
+    """GET /products?page=0 debe devolver 422 (mínimo es 1)."""
+    response = await client.get(
+        "/api/v1/products/?page=0",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 422
+
+
+async def test_listar_productos_page_size_cero_devuelve_422(
+    client: httpx.AsyncClient, admin_token: str
+):
+    """GET /products?page_size=0 debe devolver 422 (mínimo es 1)."""
+    response = await client.get(
+        "/api/v1/products/?page_size=0",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 422
+
+
+async def test_listar_productos_page_size_excesivo_devuelve_422(
+    client: httpx.AsyncClient, admin_token: str
+):
+    """GET /products?page_size=101 debe devolver 422 (máximo es 100)."""
+    response = await client.get(
+        "/api/v1/products/?page_size=101",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 422

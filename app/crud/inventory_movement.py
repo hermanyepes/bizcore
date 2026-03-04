@@ -52,6 +52,7 @@ async def get_movements(
     skip: int = 0,
     limit: int = 10,
     product_id: int | None = None,
+    movement_type: str | None = None,
 ) -> tuple[list[InventoryMovement], int]:
     """
     Devuelve una página de movimientos + el total de registros.
@@ -87,6 +88,10 @@ async def get_movements(
     if product_id is not None:
         base_query = base_query.where(InventoryMovement.product_id == product_id)
         count_query = count_query.where(InventoryMovement.product_id == product_id)
+    # movement_type: 'ENTRADA' | 'SALIDA' | None (todos los tipos)
+    if movement_type is not None:
+        base_query = base_query.where(InventoryMovement.movement_type == movement_type)
+        count_query = count_query.where(InventoryMovement.movement_type == movement_type)
 
     # Query 1: los movimientos de esta página, del más reciente al más viejo
     movements_result = await db.execute(

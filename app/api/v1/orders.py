@@ -34,7 +34,7 @@
 
 import math
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.crud import order as order_crud
@@ -58,27 +58,19 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 # ============================================================
 @router.get("/", response_model=OrderPaginated)
 async def list_orders(
-    page: int = 1,
-    page_size: int = 10,
+    page: int = Query(default=1, ge=1),               # mínimo página 1
+    page_size: int = Query(default=10, ge=1, le=100), # entre 1 y 100 registros
     supplier_id: int | None = None,
+    status: str | None = Query(default=None),  # 'PENDIENTE'/'RECIBIDO'/'CANCELADO'
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> OrderPaginated:
     """
-    Lista pedidos de compra con paginación.
+    Lista pedidos de compra con paginación y filtros opcionales.
 
     GET /api/v1/orders?page=1&page_size=10
-    GET /api/v1/orders?supplier_id=3&page=1
-
-    El parámetro `supplier_id` es opcional:
-    - Sin él: devuelve todos los pedidos del sistema
-    - Con él: devuelve solo los pedidos de ese proveedor
-
-    Incluye pedidos en cualquier estado (PENDIENTE, COMPLETADO, CANCELADO).
-    Los resultados vienen del más reciente al más antiguo.
-
-    Cada pedido incluye su lista de ítems anidada (products, quantities,
-    unit_price, subtotal).
+    GET /api/v1/orders?status=PENDIENTE
+    GET /api/v1/orders?supplier_id=3&status=RECIBIDO
     """
     skip = (page - 1) * page_size
 
@@ -87,6 +79,7 @@ async def list_orders(
         skip=skip,
         limit=page_size,
         supplier_id=supplier_id,
+        status=status,
     )
 
     pages = math.ceil(total / page_size) if total > 0 else 0

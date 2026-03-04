@@ -100,6 +100,8 @@ class UserResponse(BaseModel):
     role: str
     join_date: datetime
     is_active: bool
+    created_at: datetime
+    updated_at: datetime | None  # NULL si nunca fue actualizado
 
     # Permite crear este schema desde un objeto SQLAlchemy:
     # UserResponse.model_validate(user_obj)

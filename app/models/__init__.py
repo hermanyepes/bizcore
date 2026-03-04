@@ -5,5 +5,6 @@ from app.models.inventory_movement import InventoryMovement as InventoryMovement
 from app.models.order import Order as Order
 from app.models.order import OrderItem as OrderItem
 from app.models.product import Product as Product
+from app.models.refresh_token import RefreshToken as RefreshToken
 from app.models.supplier import Supplier as Supplier
 from app.models.user import User as User

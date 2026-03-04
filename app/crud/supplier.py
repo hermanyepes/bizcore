@@ -71,40 +71,32 @@ async def get_suppliers(
     db: AsyncSession,
     skip: int = 0,
     limit: int = 10,
+    is_active: bool | None = None,
 ) -> tuple[list[Supplier], int]:
     """
-    Devuelve una página de proveedores activos + el total de registros activos.
+    Devuelve una página de proveedores + el total de registros.
 
-    ¿Por qué skip y limit en vez de page y page_size?
-    skip y limit son los términos nativos de SQL (OFFSET y LIMIT).
-    La conversión page → skip la hace el endpoint:
-        skip = (page - 1) * page_size
+    Filtros opcionales:
+    - is_active: True → solo activos, False → solo inactivos, None → todos
 
-    ¿Por qué filtramos is_active=True?
-    Los proveedores desactivados (soft delete) no deben aparecer
-    en el listado. Siguen en la BD, pero son invisibles para la API.
-
-    ¿Por qué dos queries?
-    Son dos preguntas distintas:
-    1. "Dame los proveedores de esta página" → select con limit/offset
-    2. "¿Cuántos proveedores activos hay en total?" → select count(*)
-    Sin el total no podemos calcular cuántas páginas existen.
+    Mismo patrón que get_products: el frontend elige qué filtrar.
+    La vista de administración puede querer ver también los desactivados.
     """
-    # Query 1: los proveedores activos de esta página
-    suppliers_result = await db.execute(
-        select(Supplier)
-        .where(Supplier.is_active == True)  # noqa: E712
-        .offset(skip)
-        .limit(limit)
-    )
+    # Construir la query base — sin filtros aún
+    base_query = select(Supplier)
+    count_query = select(func.count()).select_from(Supplier)
+
+    # Aplicar filtro opcional
+    if is_active is not None:
+        base_query = base_query.where(Supplier.is_active == is_active)  # noqa: E712
+        count_query = count_query.where(Supplier.is_active == is_active)  # noqa: E712
+
+    # Query 1: los proveedores de esta página
+    suppliers_result = await db.execute(base_query.offset(skip).limit(limit))
     suppliers = list(suppliers_result.scalars().all())
 
-    # Query 2: el total de proveedores activos en la BD
-    count_result = await db.execute(
-        select(func.count())
-        .select_from(Supplier)
-        .where(Supplier.is_active == True)  # noqa: E712
-    )
+    # Query 2: el total (con los mismos filtros, sin limit/offset)
+    count_result = await db.execute(count_query)
     total = count_result.scalar_one()
 
     return suppliers, total

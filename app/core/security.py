@@ -41,6 +41,8 @@
 #
 # ============================================================
 
+import hashlib
+import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -136,3 +138,54 @@ def decode_access_token(token: str) -> dict[str, Any]:
     Devuelve el payload como diccionario si todo está bien.
     """
     return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+
+
+# ============================================================
+# Refresh tokens — generación y hashing
+# ============================================================
+#
+# ¿POR QUÉ un token aleatorio en vez de un JWT para el refresh?
+# Un JWT tiene payload visible (sub, exp, etc.) y puede usarse
+# sin consultar la BD (es "stateless"). Eso es bueno para el
+# access token, pero MALO para el refresh token: queremos poder
+# revocarlo en cualquier momento (logout). Para revocar,
+# necesitamos un registro en BD — así que el token pasa a ser
+# "stateful" de todas formas. Un string aleatorio es más simple,
+# más corto, y igual de seguro para este propósito.
+#
+# secrets.token_urlsafe(32):
+# - Genera 32 bytes de entropía criptográfica (fuente: OS CSPRNG)
+# - Los codifica en Base64url → resultado: 43 caracteres
+# - "url-safe": solo usa A-Z, a-z, 0-9, -, _ (sin =, +, /)
+# - 32 bytes = 256 bits de entropía → imposible de adivinar
+# ============================================================
+
+
+def create_refresh_token() -> str:
+    """
+    Genera un token aleatorio criptográficamente seguro.
+
+    Devuelve un string de 43 caracteres Base64url.
+    Este valor es el que el cliente guarda y envía en /refresh.
+
+    Ejemplo: "kP3mN9vRqX2yTzW8jL5bC1dF6gH0sA7n-uE4oI"
+    (diferente cada vez — 256 bits de entropía)
+    """
+    return secrets.token_urlsafe(32)
+
+
+def hash_refresh_token(raw_token: str) -> str:
+    """
+    Calcula SHA256 del token para guardar en la BD.
+
+    ¿Por qué no guardamos el token directamente?
+    Si alguien roba la BD, obtiene los hashes — no los tokens reales.
+    SHA256 es una función de un solo sentido: dado el hash,
+    es computacionalmente imposible recuperar el token original.
+
+    Devuelve 64 caracteres hexadecimales (SHA256 siempre es 256 bits = 64 hex).
+
+    Ejemplo:
+        hash_refresh_token("kP3mN9vR...") → "3a7f9b2c4d1e8f5a..."
+    """
+    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()

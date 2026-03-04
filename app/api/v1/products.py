@@ -25,7 +25,7 @@
 
 import math
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.crud import product as product_crud
@@ -49,28 +49,28 @@ router = APIRouter(prefix="/products", tags=["products"])
 # ============================================================
 @router.get("/", response_model=ProductPaginated)
 async def list_products(
-    page: int = 1,
-    page_size: int = 10,
+    page: int = Query(default=1, ge=1),               # mínimo página 1
+    page_size: int = Query(default=10, ge=1, le=100), # entre 1 y 100 registros
+    is_active: bool | None = Query(default=None),     # True/False/None (todos)
+    category: str | None = Query(default=None),       # ej: 'Bebidas', 'Snacks'
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),  # cualquier usuario autenticado
+    current_user: User = Depends(get_current_user),   # cualquier usuario autenticado
 ) -> ProductPaginated:
     """
-    Lista todos los productos activos con paginación.
+    Lista productos con paginación y filtros opcionales.
 
     GET /api/v1/products?page=1&page_size=10
+    GET /api/v1/products?is_active=true              ← catálogo activo
+    GET /api/v1/products?category=Bebidas&is_active=true
+    GET /api/v1/products?is_active=false             ← productos desactivados (admin)
 
-    Solo devuelve productos con is_active=True.
-    Los productos desactivados (soft delete) no aparecen aquí.
-
-    ¿Por qué cualquier usuario autenticado puede listar productos?
-    Porque los empleados también necesitan consultar el catálogo.
-    Crear, editar y eliminar sí requiere ser Administrador.
+    Filtros opcionales — si no se envían, devuelve todos los registros.
     """
-    # Convertir page/page_size a skip/limit (los parámetros nativos de SQL)
-    # Ejemplo: page=2, page_size=10 → skip=10 (saltar los primeros 10)
     skip = (page - 1) * page_size
 
-    products, total = await product_crud.get_products(db, skip=skip, limit=page_size)
+    products, total = await product_crud.get_products(
+        db, skip=skip, limit=page_size, is_active=is_active, category=category
+    )
 
     # math.ceil redondea hacia arriba: 11 productos / 10 por página = 2 páginas
     pages = math.ceil(total / page_size) if total > 0 else 0

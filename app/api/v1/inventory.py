@@ -33,7 +33,7 @@
 
 import math
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.crud import inventory_movement as inventory_crud
@@ -56,24 +56,20 @@ router = APIRouter(prefix="/inventory", tags=["inventory"])
 # ============================================================
 @router.get("/", response_model=InventoryMovementPaginated)
 async def list_movements(
-    page: int = 1,
-    page_size: int = 10,
+    page: int = Query(default=1, ge=1),               # mínimo página 1
+    page_size: int = Query(default=10, ge=1, le=100), # entre 1 y 100 registros
     product_id: int | None = None,
+    movement_type: str | None = Query(default=None),  # 'ENTRADA'/'SALIDA'/None
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> InventoryMovementPaginated:
     """
-    Lista movimientos de inventario con paginación.
+    Lista movimientos de inventario con paginación y filtros opcionales.
 
     GET /api/v1/inventory?page=1&page_size=10
-    GET /api/v1/inventory?product_id=5&page=1
-
-    El parámetro `product_id` es opcional:
-    - Sin él: devuelve todos los movimientos del sistema
-    - Con él: devuelve solo el historial de ese producto
-
-    Los resultados vienen ordenados del más reciente al más viejo
-    (mismo criterio que un extracto bancario).
+    GET /api/v1/inventory?product_id=5
+    GET /api/v1/inventory?movement_type=ENTRADA
+    GET /api/v1/inventory?product_id=5&movement_type=SALIDA
     """
     skip = (page - 1) * page_size
 
@@ -82,6 +78,7 @@ async def list_movements(
         skip=skip,
         limit=page_size,
         product_id=product_id,
+        movement_type=movement_type,
     )
 
     pages = math.ceil(total / page_size) if total > 0 else 0

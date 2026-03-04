@@ -60,34 +60,42 @@ async def get_users(
     db: AsyncSession,
     skip: int = 0,
     limit: int = 10,
+    is_active: bool | None = None,
+    role: str | None = None,
 ) -> tuple[list[User], int]:
     """
     Devuelve una página de usuarios + el total de registros.
 
-    ¿Por qué skip y limit y no page y page_size?
-    skip y limit son los parámetros nativos de SQL (OFFSET y LIMIT).
-    La conversión de page → skip la hace el endpoint:
-        skip = (page - 1) * page_size
+    Filtros opcionales:
+    - is_active: True → solo activos, False → solo inactivos, None → todos
+    - role: 'Administrador' | 'Empleado' | None → todos los roles
 
-    ¿Por qué dos queries y no uno?
-    Para saber el total de páginas necesitas saber cuántos usuarios
-    hay en total. No puedes saberlo solo con la página actual.
-    Son dos preguntas diferentes a la BD:
-    1. "Dame los usuarios de esta página" → select con limit/offset
-    2. "¿Cuántos usuarios hay en total?" → select count(*)
+    ¿Por qué None como default y no True?
+    El admin necesita ver también los usuarios desactivados para
+    gestionar el sistema. El frontend decide qué mostrar según el contexto.
 
-    Devuelve una tupla: (lista de usuarios, total).
+    ¿Cómo funcionan los filtros opcionales en SQLAlchemy?
+    Construimos la query base y solo añadimos .where() si el parámetro
+    no es None. Así la misma función sirve para "sin filtro" y "con filtro".
     """
+    # Construir la query base — sin filtros aún
+    base_query = select(User)
+    count_query = select(func.count()).select_from(User)
+
+    # Aplicar filtros opcionales — solo si el cliente los envió
+    if is_active is not None:
+        base_query = base_query.where(User.is_active == is_active)
+        count_query = count_query.where(User.is_active == is_active)
+    if role is not None:
+        base_query = base_query.where(User.role == role)
+        count_query = count_query.where(User.role == role)
+
     # Query 1: los usuarios de esta página
-    users_result = await db.execute(
-        select(User).offset(skip).limit(limit)
-    )
+    users_result = await db.execute(base_query.offset(skip).limit(limit))
     users = list(users_result.scalars().all())
 
-    # Query 2: el total de usuarios en la BD
-    count_result = await db.execute(
-        select(func.count()).select_from(User)
-    )
+    # Query 2: el total (con los mismos filtros, sin limit/offset)
+    count_result = await db.execute(count_query)
     total = count_result.scalar_one()
 
     return users, total
