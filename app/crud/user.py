@@ -171,8 +171,13 @@ async def update_user(
     # Si el cliente envió una nueva contraseña, hashearla antes de guardar.
     # Además, el modelo tiene `password_hash`, no `password` — hay que
     # renombrar la clave antes de aplicarla al objeto.
+    # Si el cliente envió password=null (campo vacío en el form de edición),
+    # lo descartamos — significa "no cambiar la contraseña actual".
     if "password" in update_data:
-        update_data["password_hash"] = hash_password(update_data.pop("password"))
+        if update_data["password"] is not None:
+            update_data["password_hash"] = hash_password(update_data.pop("password"))
+        else:
+            update_data.pop("password")  # null = no cambiar → no llega al setattr
 
     for field, value in update_data.items():
         setattr(user, field, value)
