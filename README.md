@@ -85,6 +85,11 @@ source .venv/Scripts/activate   # Windows
 
 # Install dependencies
 pip install -r requirements-dev.txt
+
+# Install pre-commit hooks (runs detect-secrets before every commit)
+pip install pre-commit detect-secrets
+pre-commit install
+detect-secrets scan --exclude-files '.secrets.baseline' > .secrets.baseline
 ```
 
 ### Environment setup

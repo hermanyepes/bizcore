@@ -98,6 +98,26 @@ app.add_middleware(
 
 
 # ============================================================
+# Middleware de seguridad HTTP
+# ============================================================
+# Cada respuesta pasa por esta función antes de llegar al cliente.
+# `call_next` le pasa el request al resto de la app (routers, etc.)
+# y cuando devuelve la respuesta, le añadimos los headers de seguridad.
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    # Impide que el navegador adivine el tipo de archivo — solo confía en Content-Type
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    # Prohíbe que este sitio se cargue dentro de un <iframe> de otra página (anti-clickjacking)
+    response.headers["X-Frame-Options"] = "DENY"
+    # Fuerza HTTPS por 1 año en el navegador, incluyendo subdominios
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # Al navegar a otro sitio, solo envía el origen (bizcore.com), nunca la URL completa
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+
+# ============================================================
 # Registro de routers
 # ============================================================
 # Un solo include_router aquí. api_router internamente
