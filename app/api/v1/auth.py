@@ -142,8 +142,12 @@ async def refresh(
         headers={"WWW-Authenticate": "Bearer"},
     )
 
-    # Paso 1: buscar el token en BD (valida hash, is_revoked, expires_at)
-    stored_token = await get_valid_refresh_token(db, data.refresh_token)
+    # Paso 1: buscar el token en BD con SELECT FOR UPDATE
+    # for_update=True bloquea la fila hasta el commit — si dos requests llegan
+    # simultáneamente con el mismo token, la segunda espera a que la primera
+    # termine. Cuando la primera revoca el token y hace commit, la segunda
+    # lo encuentra con is_revoked=True y recibe 401. Race condition eliminada.
+    stored_token = await get_valid_refresh_token(db, data.refresh_token, for_update=True)
     if stored_token is None:
         raise invalid_token
 

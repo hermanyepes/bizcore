@@ -54,6 +54,7 @@ async def create_refresh_token_db(
 async def get_valid_refresh_token(
     db: AsyncSession,
     raw_token: str,
+    for_update: bool = False,
 ) -> RefreshToken | None:
     """
     Busca un refresh token válido por su hash.
@@ -71,16 +72,26 @@ async def get_valid_refresh_token(
     Eficiencia: una sola consulta con WHERE es mejor que traer
     el registro y luego hacer if-elif en Python. La BD está
     optimizada para filtrar — Python no.
+
+    for_update=True: agrega SELECT FOR UPDATE — bloquea la fila hasta que
+    la transacción haga commit. Úsalo cuando vayas a modificar el token
+    (rotación en /refresh) para evitar race conditions con requests simultáneas.
+    En /logout no hace falta porque no hay emisión de tokens nuevos.
     """
     token_hash = hash_refresh_token(raw_token)
 
-    result = await db.execute(
-        select(RefreshToken).where(
-            RefreshToken.token_hash == token_hash,
-            RefreshToken.is_revoked == False,  # noqa: E712 — SQLAlchemy requiere == False
-            RefreshToken.expires_at > datetime.now(UTC),
-        )
+    # Construir la query base con los tres filtros de validez
+    query = select(RefreshToken).where(
+        RefreshToken.token_hash == token_hash,
+        RefreshToken.is_revoked == False,  # noqa: E712 — SQLAlchemy requiere == False
+        RefreshToken.expires_at > datetime.now(UTC),
     )
+
+    # for_update=True: bloquea la fila en BD hasta el commit — previene race condition
+    if for_update:
+        query = query.with_for_update()
+
+    result = await db.execute(query)
     return result.scalar_one_or_none()
 
 
