@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     # (el string del .env) en ["http://localhost:4200", "http://localhost:3000"]
     ALLOWED_ORIGINS: list[str] = ["http://localhost:4200"]
 
+    # --- Entorno de ejecución ---
+    # Controla comportamientos que solo deben estar activos en desarrollo.
+    # Valores válidos: "development" | "production"
+    # En producción, deshabilita /docs y /redoc para evitar reconocimiento.
+    ENVIRONMENT: str = "development"
+
     # --- Configuración del archivo .env ---
     # model_config le dice a pydantic-settings CÓMO leer la configuración.
     # env_file: busca este archivo en el directorio de trabajo
