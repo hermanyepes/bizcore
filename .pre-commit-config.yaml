@@ -1,0 +1,47 @@
+# ============================================================
+# BizCore — Hooks de pre-commit
+# ============================================================
+# pre-commit es un framework que ejecuta scripts automáticamente
+# justo antes de que git cree un commit. Si algún hook falla,
+# el commit se cancela y se muestra el error.
+#
+# SETUP inicial (solo una vez):
+#   pip install pre-commit detect-secrets
+#   pre-commit install          # registra los hooks en .git/hooks/
+#   detect-secrets scan > .secrets.baseline   # crea la lista blanca
+#
+# Después de ese setup, los hooks corren solos en cada git commit.
+# ============================================================
+
+repos:
+  # ----------------------------------------------------------
+  # detect-secrets: detecta secretos reales (API keys, tokens,
+  # contraseñas) antes de que lleguen al repositorio.
+  # ----------------------------------------------------------
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        # Le decimos qué archivo contiene los falsos positivos
+        # conocidos (plantillas, ejemplos, valores de prueba).
+        args: ["--baseline", ".secrets.baseline"]
+        # Excluimos el propio baseline para no crear un loop
+        exclude: .secrets.baseline
+
+  # ----------------------------------------------------------
+  # Hooks básicos de calidad de código (del repo oficial)
+  # ----------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # Impide subir archivos con conflictos de merge sin resolver
+      - id: check-merge-conflict
+      # Impide subir archivos .env reales por nombre
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      # Elimina espacios en blanco al final de las líneas
+      - id: trailing-whitespace
+        types: [python]
+      # Asegura que todos los archivos terminen con newline
+      - id: end-of-file-fixer
+        types: [python]

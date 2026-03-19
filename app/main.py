@@ -38,6 +38,10 @@ from app.core.config import settings
 from app.core.database import engine
 from app.core.limiter import limiter
 
+# True cuando ENVIRONMENT="production" en .env (o variable de entorno del sistema).
+# Se define aquí para que lifespan y FastAPI() puedan usarlo sin dependencia implícita.
+_is_production = settings.ENVIRONMENT == "production"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -50,7 +54,10 @@ async def lifespan(app: FastAPI):
     # === STARTUP ===
     print("BizCore arrancando...")
     print("BD conectada:", settings.DATABASE_URL.split("@")[-1])  # no exponer credenciales en el log
-    print("Aplicación lista en http://localhost:8000/docs")
+    if not _is_production:
+        print("Aplicación lista en http://localhost:8000/docs")
+    else:
+        print("Aplicación lista (modo producción — /docs deshabilitado)")
 
     yield  # aquí corre la app normalmente
 
@@ -64,6 +71,10 @@ async def lifespan(app: FastAPI):
 # ============================================================
 # Creación de la instancia FastAPI
 # ============================================================
+# En producción, /docs y /redoc se deshabilitan para evitar reconocimiento:
+# Swagger UI expone todos los endpoints, esquemas y parámetros de la API,
+# reduciendo el trabajo de un atacante de horas a cero segundos.
+# None como valor de docs_url/redoc_url hace que FastAPI no registre la ruta.
 app = FastAPI(
     title="BizCore API",
     description=(
@@ -72,6 +83,8 @@ app = FastAPI(
     ),
     version="1.0.0",
     lifespan=lifespan,
+    docs_url=None if _is_production else "/docs",
+    redoc_url=None if _is_production else "/redoc",
 )
 
 # Registrar el limiter en el estado de la app.
@@ -98,6 +111,26 @@ app.add_middleware(
 
 
 # ============================================================
+# Middleware de seguridad HTTP
+# ============================================================
+# Cada respuesta pasa por esta función antes de llegar al cliente.
+# `call_next` le pasa el request al resto de la app (routers, etc.)
+# y cuando devuelve la respuesta, le añadimos los headers de seguridad.
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    # Impide que el navegador adivine el tipo de archivo — solo confía en Content-Type
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    # Prohíbe que este sitio se cargue dentro de un <iframe> de otra página (anti-clickjacking)
+    response.headers["X-Frame-Options"] = "DENY"
+    # Fuerza HTTPS por 1 año en el navegador, incluyendo subdominios
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # Al navegar a otro sitio, solo envía el origen (bizcore.com), nunca la URL completa
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+
+# ============================================================
 # Registro de routers
 # ============================================================
 # Un solo include_router aquí. api_router internamente
@@ -112,12 +145,15 @@ app.include_router(api_router)
 @app.get("/")
 async def root():
     """Confirmación de que el servidor está corriendo."""
-    return {
+    response = {
         "app": "BizCore API",
         "version": "1.0.0",
-        "docs": "/docs",
         "health": "/health",
     }
+    # Solo anunciar /docs si realmente está disponible
+    if not _is_production:
+        response["docs"] = "/docs"
+    return response
 
 
 @app.get("/health")

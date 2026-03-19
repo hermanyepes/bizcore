@@ -57,10 +57,18 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # --- CORS ---
-    # Lista de orígenes permitidos. pydantic-settings convierte
-    # automáticamente "http://localhost:4200,http://localhost:3000"
-    # (el string del .env) en ["http://localhost:4200", "http://localhost:3000"]
-    ALLOWED_ORIGINS: list[str] = ["http://localhost:4200"]
+    # Lista de orígenes permitidos. pydantic-settings acepta dos formatos desde .env:
+    #   Formato JSON:  ALLOWED_ORIGINS=["http://localhost:4200","http://localhost:3000"]
+    #   Formato CSV:   ALLOWED_ORIGINS=http://localhost:4200,http://localhost:3000
+    # Default vacío: si falta en .env, CORS rechaza todo (fallo rápido y visible,
+    # no un "funciona en dev pero silenciosamente roto en prod").
+    ALLOWED_ORIGINS: list[str] = []
+
+    # --- Entorno de ejecución ---
+    # Controla comportamientos que solo deben estar activos en desarrollo.
+    # Valores válidos: "development" | "production"
+    # En producción, deshabilita /docs y /redoc para evitar reconocimiento.
+    ENVIRONMENT: str = "development"
 
     # --- Configuración del archivo .env ---
     # model_config le dice a pydantic-settings CÓMO leer la configuración.
