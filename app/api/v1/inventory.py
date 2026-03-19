@@ -73,7 +73,7 @@ async def list_movements(
     """
     skip = (page - 1) * page_size
 
-    movements, total = await inventory_crud.get_movements(
+    movements, total = await inventory_service.list_movements(
         db,
         skip=skip,
         limit=page_size,
