@@ -31,6 +31,7 @@ from app.crud import user as user_crud
 from app.dependencies import get_current_user, get_db, require_admin
 from app.models.user import User
 from app.schemas.user import UserCreate, UserPaginated, UserResponse, UserUpdate
+from app.services.validation import check_unique_field
 
 # prefix="/users": todas las rutas empiezan con /users
 # Combinado con el prefijo del router principal → /api/v1/users
@@ -166,21 +167,11 @@ async def create_user(
     FastAPI lo convertiría en un 500 Internal Server Error genérico.
     Es mejor capturarlo y devolver un 409 Conflict con un mensaje claro.
     """
-    # Verificar que no exista ya un usuario con ese email
-    existing_email = await user_crud.get_user_by_email(db, data.email)
-    if existing_email is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Ya existe un usuario con el email '{data.email}'",
-        )
-
-    # Verificar que no exista ya un usuario con ese document_id
-    existing_id = await user_crud.get_user_by_id(db, data.document_id)
-    if existing_id is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Ya existe un usuario con document_id '{data.document_id}'",
-        )
+    # Verificar unicidad de email y document_id antes de insertar.
+    # pk_field="document_id" porque la PK de User no es 'id' sino 'document_id'.
+    # En un POST no hay exclude_id — cualquier registro existente es un duplicado.
+    await check_unique_field(db, User, "email", data.email, pk_field="document_id")
+    await check_unique_field(db, User, "document_id", data.document_id, pk_field="document_id")
 
     user = await user_crud.create_user(db, data)
     return UserResponse.model_validate(user)

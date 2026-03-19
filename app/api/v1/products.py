@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.crud import product as product_crud
 from app.dependencies import get_current_user, get_db, require_admin
+from app.models.product import Product
 from app.models.user import User
 from app.schemas.product import (
     ProductCreate,
@@ -37,6 +38,7 @@ from app.schemas.product import (
     ProductResponse,
     ProductUpdate,
 )
+from app.services.validation import check_unique_field
 
 # prefix="/products": todas las rutas empiezan con /products
 # Combinado con el prefijo del router principal → /api/v1/products
@@ -135,13 +137,9 @@ async def create_product(
     un 500 genérico — un error confuso para el cliente.
     Es mejor detectarlo nosotros y devolver un 409 claro.
     """
-    # Verificar que no exista ya un producto con ese nombre
-    existing = await product_crud.get_product_by_name(db, data.name)
-    if existing is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Ya existe un producto con el nombre '{data.name}'",
-        )
+    # Verificar que no exista ya un producto con ese nombre.
+    # Product usa 'id' como PK (autoincremental) → pk_field por defecto.
+    await check_unique_field(db, Product, "name", data.name)
 
     product = await product_crud.create_product(db, data)
     return ProductResponse.model_validate(product)
@@ -171,14 +169,9 @@ async def update_product(
     - Cambiar nombre y precio:   {"name": "Café Premium", "price": 32000}
     """
     # Si el cliente quiere renombrar el producto, verificar que el
-    # nuevo nombre no esté siendo usado por otro producto.
+    # nuevo nombre no esté siendo usado por OTRO producto.
     if data.name is not None:
-        existing = await product_crud.get_product_by_name(db, data.name)
-        if existing is not None and existing.id != product_id:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Ya existe un producto con el nombre '{data.name}'",
-            )
+        await check_unique_field(db, Product, "name", data.name, exclude_id=product_id)
 
     product = await product_crud.update_product(db, product_id, data)
     if product is None:
