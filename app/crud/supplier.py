@@ -12,9 +12,10 @@
 #
 # ============================================================
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.crud.base import get_paginated
 from app.models.supplier import Supplier
 from app.schemas.supplier import SupplierCreate, SupplierUpdate
 
@@ -82,24 +83,13 @@ async def get_suppliers(
     Mismo patrón que get_products: el frontend elige qué filtrar.
     La vista de administración puede querer ver también los desactivados.
     """
-    # Construir la query base — sin filtros aún
-    base_query = select(Supplier)
-    count_query = select(func.count()).select_from(Supplier)
-
-    # Aplicar filtro opcional
+    # Construir la lista de filtros opcionales.
+    # get_paginated los aplica a base_query y count_query en el mismo loop.
+    filters = []
     if is_active is not None:
-        base_query = base_query.where(Supplier.is_active == is_active)  # noqa: E712
-        count_query = count_query.where(Supplier.is_active == is_active)  # noqa: E712
+        filters.append(Supplier.is_active == is_active)  # noqa: E712
 
-    # Query 1: los proveedores de esta página
-    suppliers_result = await db.execute(base_query.offset(skip).limit(limit))
-    suppliers = list(suppliers_result.scalars().all())
-
-    # Query 2: el total (con los mismos filtros, sin limit/offset)
-    count_result = await db.execute(count_query)
-    total = count_result.scalar_one()
-
-    return suppliers, total
+    return await get_paginated(db, Supplier, skip, limit, filters)
 
 
 # ============================================================

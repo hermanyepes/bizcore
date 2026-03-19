@@ -32,10 +32,11 @@
 #
 # ============================================================
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.crud.base import get_paginated
 from app.models.order import Order
 from app.schemas.order import OrderUpdate
 
@@ -82,33 +83,27 @@ async def get_orders(
 
     Los pedidos se ordenan del más reciente al más antiguo (created_at DESC).
     """
-    # Construimos las queries base — sin filtros aún
-    base_query = select(Order).options(selectinload(Order.items))
-    count_query = select(func.count()).select_from(Order)
-
-    # Aplicar filtros opcionales
+    # Construir la lista de filtros opcionales.
+    # get_paginated los aplica a base_query y count_query en el mismo loop.
+    filters = []
     if supplier_id is not None:
-        base_query = base_query.where(Order.supplier_id == supplier_id)
-        count_query = count_query.where(Order.supplier_id == supplier_id)
+        filters.append(Order.supplier_id == supplier_id)
     # status: 'PENDIENTE' | 'RECIBIDO' | 'CANCELADO'
     if status is not None:
-        base_query = base_query.where(Order.status == status)
-        count_query = count_query.where(Order.status == status)
+        filters.append(Order.status == status)
 
-    # Query 1: pedidos de esta página, del más reciente al más antiguo
-    orders_result = await db.execute(
-        base_query
-        .order_by(Order.created_at.desc())
-        .offset(skip)
-        .limit(limit)
+    # selectinload carga los ítems de cada pedido en una segunda query.
+    # Solo aplica a base_query — el COUNT nunca necesita cargar relaciones.
+    # order_by: del más reciente al más antiguo, igual que un extracto.
+    return await get_paginated(
+        db,
+        Order,
+        skip,
+        limit,
+        filters,
+        order_by=Order.created_at.desc(),
+        options=[selectinload(Order.items)],
     )
-    orders = list(orders_result.scalars().all())
-
-    # Query 2: total de pedidos (con o sin filtro de proveedor)
-    count_result = await db.execute(count_query)
-    total = count_result.scalar_one()
-
-    return orders, total
 
 
 # ============================================================

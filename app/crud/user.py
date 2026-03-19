@@ -12,10 +12,11 @@
 #
 # ============================================================
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
+from app.crud.base import get_paginated
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
 
@@ -78,27 +79,15 @@ async def get_users(
     Construimos la query base y solo añadimos .where() si el parámetro
     no es None. Así la misma función sirve para "sin filtro" y "con filtro".
     """
-    # Construir la query base — sin filtros aún
-    base_query = select(User)
-    count_query = select(func.count()).select_from(User)
-
-    # Aplicar filtros opcionales — solo si el cliente los envió
+    # Construir la lista de filtros opcionales.
+    # get_paginated los aplica a base_query y count_query en el mismo loop.
+    filters = []
     if is_active is not None:
-        base_query = base_query.where(User.is_active == is_active)
-        count_query = count_query.where(User.is_active == is_active)
+        filters.append(User.is_active == is_active)
     if role is not None:
-        base_query = base_query.where(User.role == role)
-        count_query = count_query.where(User.role == role)
+        filters.append(User.role == role)
 
-    # Query 1: los usuarios de esta página
-    users_result = await db.execute(base_query.offset(skip).limit(limit))
-    users = list(users_result.scalars().all())
-
-    # Query 2: el total (con los mismos filtros, sin limit/offset)
-    count_result = await db.execute(count_query)
-    total = count_result.scalar_one()
-
-    return users, total
+    return await get_paginated(db, User, skip, limit, filters)
 
 
 # ============================================================

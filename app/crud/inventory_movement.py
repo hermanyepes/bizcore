@@ -20,9 +20,10 @@
 #
 # ============================================================
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.crud.base import get_paginated
 from app.models.inventory_movement import InventoryMovement
 from app.schemas.inventory_movement import InventoryMovementCreate
 
@@ -80,33 +81,25 @@ async def get_movements(
     El movimiento más reciente primero — igual que un extracto bancario.
     El usuario quiere ver lo último que pasó, no lo primero del año 2024.
     """
-    # Construimos la base de la query — la misma para ambas consultas.
-    # Si hay product_id, añadimos el filtro. Si no, la query queda sin filtro.
-    base_query = select(InventoryMovement)
-    count_query = select(func.count()).select_from(InventoryMovement)
-
+    # Construir la lista de filtros opcionales.
+    # get_paginated los aplica a base_query y count_query en el mismo loop.
+    filters = []
     if product_id is not None:
-        base_query = base_query.where(InventoryMovement.product_id == product_id)
-        count_query = count_query.where(InventoryMovement.product_id == product_id)
+        filters.append(InventoryMovement.product_id == product_id)
     # movement_type: 'ENTRADA' | 'SALIDA' | None (todos los tipos)
     if movement_type is not None:
-        base_query = base_query.where(InventoryMovement.movement_type == movement_type)
-        count_query = count_query.where(InventoryMovement.movement_type == movement_type)
+        filters.append(InventoryMovement.movement_type == movement_type)
 
-    # Query 1: los movimientos de esta página, del más reciente al más viejo
-    movements_result = await db.execute(
-        base_query
-        .order_by(InventoryMovement.created_at.desc())
-        .offset(skip)
-        .limit(limit)
+    # Ordenamos del más reciente al más viejo — como un extracto bancario.
+    # order_by solo afecta base_query; el COUNT ignora el orden.
+    return await get_paginated(
+        db,
+        InventoryMovement,
+        skip,
+        limit,
+        filters,
+        order_by=InventoryMovement.created_at.desc(),
     )
-    movements = list(movements_result.scalars().all())
-
-    # Query 2: total de movimientos (con o sin filtro de producto)
-    count_result = await db.execute(count_query)
-    total = count_result.scalar_one()
-
-    return movements, total
 
 
 # ============================================================
