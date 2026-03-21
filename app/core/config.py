@@ -55,6 +55,19 @@ class Settings(BaseSettings):
     # Balance entre seguridad (si lo roban, tiene ventana limitada) y
     # comodidad (el usuario no tiene que volver a hacer login cada semana).
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    # Entropía del refresh token en bytes. 32 bytes = 256 bits de entropía.
+    # NIST SP 800-63B exige mínimo 128 bits; usamos 256 para tener margen
+    # ante futuros avances en criptoanálisis.
+    REFRESH_TOKEN_ENTROPY_BYTES: int = 32
+
+    # --- Rate limiting ---
+    # 5 intentos de login por minuto por IP.
+    # Derivado de OWASP: suficiente para un humano legítimo,
+    # demasiado lento para un ataque de diccionario automatizado.
+    LOGIN_RATE_LIMIT: str = "5/minute"
+    # Operaciones autenticadas (refresh, logout): umbral más alto porque
+    # el usuario ya demostró que tiene credenciales válidas.
+    AUTHENTICATED_RATE_LIMIT: str = "20/minute"
 
     # --- CORS ---
     # Lista de orígenes permitidos. pydantic-settings acepta dos formatos desde .env:

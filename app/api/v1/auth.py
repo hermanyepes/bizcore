@@ -23,6 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.security import (
     create_access_token,
@@ -55,7 +56,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 # ============================================================
 
 @router.post("/login", response_model=TokenResponse)
-@limiter.limit("5/minute")
+@limiter.limit(settings.LOGIN_RATE_LIMIT)
 async def login(
     request: Request,        # requerido por slowapi para leer la IP del cliente
     data: LoginRequest,
@@ -114,7 +115,7 @@ async def login(
 # ============================================================
 
 @router.post("/refresh", response_model=TokenResponse)
-@limiter.limit("20/minute")
+@limiter.limit(settings.AUTHENTICATED_RATE_LIMIT)
 async def refresh(
     request: Request,
     data: RefreshRequest,
@@ -186,7 +187,7 @@ async def refresh(
 # ============================================================
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
-@limiter.limit("20/minute")
+@limiter.limit(settings.AUTHENTICATED_RATE_LIMIT)
 async def logout(
     request: Request,
     data: LogoutRequest,

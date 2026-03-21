@@ -171,7 +171,7 @@ def create_refresh_token() -> str:
     Ejemplo: "kP3mN9vRqX2yTzW8jL5bC1dF6gH0sA7n-uE4oI"
     (diferente cada vez — 256 bits de entropía)
     """
-    return secrets.token_urlsafe(32)
+    return secrets.token_urlsafe(settings.REFRESH_TOKEN_ENTROPY_BYTES)
 
 
 def hash_refresh_token(raw_token: str) -> str:
