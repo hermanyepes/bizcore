@@ -83,7 +83,7 @@ async def get_users(
     # get_paginated los aplica a base_query y count_query en el mismo loop.
     filters = []
     if is_active is not None:
-        filters.append(User.is_active == is_active)
+        filters.append(User.is_active == is_active)  # noqa: E712
     if role is not None:
         filters.append(User.role == role)
 
