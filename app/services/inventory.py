@@ -25,7 +25,7 @@
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.crud.inventory_movement import create_movement
+from app.crud.inventory_movement import create_movement, get_movements
 from app.crud.product import get_product_by_id
 from app.models.inventory_movement import InventoryMovement
 from app.schemas.inventory_movement import InventoryMovementCreate
@@ -147,3 +147,26 @@ async def register_movement(
     await db.refresh(product)
 
     return movement
+
+
+async def list_movements(
+    db: AsyncSession,
+    skip: int = 0,
+    limit: int = 10,
+    product_id: int | None = None,
+    movement_type: str | None = None,
+) -> tuple[list[InventoryMovement], int]:
+    """
+    Devuelve una página de movimientos con filtros opcionales.
+
+    Por ahora delega directamente al CRUD sin lógica adicional.
+    Tener esta capa permite agregar reglas de negocio en el futuro
+    (filtros por rol, auditoría, caché) sin modificar el router.
+    """
+    return await get_movements(
+        db,
+        skip=skip,
+        limit=limit,
+        product_id=product_id,
+        movement_type=movement_type,
+    )

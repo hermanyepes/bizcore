@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.crud import supplier as supplier_crud
 from app.dependencies import get_current_user, get_db, require_admin
+from app.models.supplier import Supplier
 from app.models.user import User
 from app.schemas.supplier import (
     SupplierCreate,
@@ -37,6 +38,7 @@ from app.schemas.supplier import (
     SupplierResponse,
     SupplierUpdate,
 )
+from app.services.validation import check_unique_field
 
 # prefix="/suppliers": todas las rutas empiezan con /suppliers
 # Combinado con el prefijo del router principal → /api/v1/suppliers
@@ -126,22 +128,11 @@ async def create_supplier(
     para devolver 409 con mensaje claro en vez de un 500 críptico
     de PostgreSQL por violación de constraint unique.
     """
-    # Verificar que no exista ya un proveedor con ese nombre
-    existing_name = await supplier_crud.get_supplier_by_name(db, data.name)
-    if existing_name is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Ya existe un proveedor con el nombre '{data.name}'",
-        )
-
-    # Verificar que no exista ya un proveedor con ese email (si se envió)
+    # Verificar unicidad de nombre y email antes de insertar.
+    # contact_email es opcional — solo verificar si viene en el payload.
+    await check_unique_field(db, Supplier, "name", data.name)
     if data.contact_email is not None:
-        existing_email = await supplier_crud.get_supplier_by_email(db, data.contact_email)
-        if existing_email is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Ya existe un proveedor con el email '{data.contact_email}'",
-            )
+        await check_unique_field(db, Supplier, "contact_email", data.contact_email)
 
     supplier = await supplier_crud.create_supplier(db, data)
     return SupplierResponse.model_validate(supplier)
@@ -169,25 +160,12 @@ async def update_supplier(
     - Desactivar proveedor:     {"is_active": false}
     - Cambiar nombre y email:   {"name": "Nuevo Nombre", "contact_email": "nuevo@mail.com"}
     """
-    # Si el cliente quiere renombrar, verificar que el nuevo nombre
-    # no lo esté usando OTRO proveedor (no él mismo).
+    # Si el cliente quiere renombrar o cambiar el email, verificar que
+    # el nuevo valor no lo esté usando OTRO proveedor (no él mismo).
     if data.name is not None:
-        existing_name = await supplier_crud.get_supplier_by_name(db, data.name)
-        if existing_name is not None and existing_name.id != supplier_id:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Ya existe un proveedor con el nombre '{data.name}'",
-            )
-
-    # Si el cliente quiere cambiar el email, verificar que no lo
-    # esté usando OTRO proveedor (no él mismo).
+        await check_unique_field(db, Supplier, "name", data.name, exclude_id=supplier_id)
     if data.contact_email is not None:
-        existing_email = await supplier_crud.get_supplier_by_email(db, data.contact_email)
-        if existing_email is not None and existing_email.id != supplier_id:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Ya existe un proveedor con el email '{data.contact_email}'",
-            )
+        await check_unique_field(db, Supplier, "contact_email", data.contact_email, exclude_id=supplier_id)
 
     supplier = await supplier_crud.update_supplier(db, supplier_id, data)
     if supplier is None:

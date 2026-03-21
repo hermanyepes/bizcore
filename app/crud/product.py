@@ -12,9 +12,10 @@
 #
 # ============================================================
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.crud.base import get_paginated
 from app.models.product import Product
 from app.schemas.product import ProductCreate, ProductUpdate
 
@@ -72,27 +73,16 @@ async def get_products(
     disponibles. La vista de administración puede ver todos incluyendo
     los desactivados. El frontend elige qué filtrar según el contexto.
     """
-    # Construir la query base — sin filtros aún
-    base_query = select(Product)
-    count_query = select(func.count()).select_from(Product)
-
-    # Aplicar filtros opcionales
+    # Construir la lista de filtros opcionales.
+    # Cada condición es una expresión SQLAlchemy lista para usar.
+    # get_paginated las aplica a base_query y count_query en el mismo loop.
+    filters = []
     if is_active is not None:
-        base_query = base_query.where(Product.is_active == is_active)  # noqa: E712
-        count_query = count_query.where(Product.is_active == is_active)  # noqa: E712
+        filters.append(Product.is_active == is_active)  # noqa: E712
     if category is not None:
-        base_query = base_query.where(Product.category == category)
-        count_query = count_query.where(Product.category == category)
+        filters.append(Product.category == category)
 
-    # Query 1: los productos de esta página
-    products_result = await db.execute(base_query.offset(skip).limit(limit))
-    products = list(products_result.scalars().all())
-
-    # Query 2: el total (con los mismos filtros, sin limit/offset)
-    count_result = await db.execute(count_query)
-    total = count_result.scalar_one()
-
-    return products, total
+    return await get_paginated(db, Product, skip, limit, filters)
 
 
 # ============================================================

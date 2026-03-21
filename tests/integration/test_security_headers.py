@@ -21,7 +21,6 @@
 import pytest
 from httpx import AsyncClient
 
-
 # ============================================================
 # Grupo 1 — Presencia y valor exacto de cada header
 # ============================================================
