@@ -33,9 +33,10 @@
 
 import math
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import NotFoundError
 from app.crud import inventory_movement as inventory_crud
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
@@ -109,10 +110,7 @@ async def get_movement(
     movement = await inventory_crud.get_movement_by_id(db, movement_id)
 
     if movement is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Movimiento con id '{movement_id}' no encontrado",
-        )
+        raise NotFoundError("Movimiento", movement_id)
 
     return InventoryMovementResponse.model_validate(movement)
 

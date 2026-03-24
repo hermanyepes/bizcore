@@ -45,9 +45,9 @@
 #
 # ============================================================
 
-from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import InactiveResourceError, InsufficientStockError, NotFoundError
 from app.crud.order import get_order_by_id
 from app.crud.product import get_product_by_id
 from app.crud.supplier import get_supplier_by_id
@@ -88,16 +88,10 @@ async def create_order(
     supplier = await get_supplier_by_id(db, data.supplier_id)
 
     if supplier is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Proveedor no encontrado",
-        )
+        raise NotFoundError("Proveedor", data.supplier_id)
 
     if not supplier.is_active:
-        raise HTTPException(
-            status_code=400,
-            detail="No se puede crear un pedido para un proveedor inactivo",
-        )
+        raise InactiveResourceError("Proveedor", supplier.name)
 
     # ----------------------------------------------------------
     # Paso 2: validar cada producto y preparar los ítems
@@ -117,27 +111,16 @@ async def create_order(
         product = await get_product_by_id(db, item_data.product_id)
 
         if product is None:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Producto con id {item_data.product_id} no encontrado",
-            )
+            raise NotFoundError("Producto", item_data.product_id)
 
         if not product.is_active:
-            raise HTTPException(
-                status_code=400,
-                detail=f"El producto '{product.name}' está inactivo y no puede pedirse",
-            )
+            raise InactiveResourceError("Producto", product.name)
 
         if product.stock < item_data.quantity:
-            # 400: la petición es válida en formato pero inválida dado
-            # el estado actual del sistema (stock insuficiente).
-            # Incluimos los números para que el mensaje sea útil.
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Stock insuficiente para '{product.name}'. "
-                    f"Disponible: {product.stock}, solicitado: {item_data.quantity}"
-                ),
+            raise InsufficientStockError(
+                product.name,
+                available=product.stock,
+                requested=item_data.quantity,
             )
 
         # Snapshot del precio: tomamos product.price en este momento.

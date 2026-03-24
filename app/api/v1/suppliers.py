@@ -25,9 +25,10 @@
 
 import math
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import NotFoundError
 from app.crud import supplier as supplier_crud
 from app.dependencies import get_current_user, get_db, require_admin
 from app.models.supplier import Supplier
@@ -101,10 +102,7 @@ async def get_supplier(
     """
     supplier = await supplier_crud.get_supplier_by_id(db, supplier_id)
     if supplier is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Proveedor con id '{supplier_id}' no encontrado",
-        )
+        raise NotFoundError("Proveedor", supplier_id)
     return SupplierResponse.model_validate(supplier)
 
 
@@ -169,10 +167,7 @@ async def update_supplier(
 
     supplier = await supplier_crud.update_supplier(db, supplier_id, data)
     if supplier is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Proveedor con id '{supplier_id}' no encontrado",
-        )
+        raise NotFoundError("Proveedor", supplier_id)
     return SupplierResponse.model_validate(supplier)
 
 
@@ -200,8 +195,5 @@ async def delete_supplier(
     """
     supplier = await supplier_crud.delete_supplier(db, supplier_id)
     if supplier is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Proveedor con id '{supplier_id}' no encontrado",
-        )
+        raise NotFoundError("Proveedor", supplier_id)
     return SupplierResponse.model_validate(supplier)

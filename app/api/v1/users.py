@@ -24,9 +24,10 @@
 
 import math
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import NotFoundError
 from app.crud import user as user_crud
 from app.dependencies import get_current_user, get_db, require_admin
 from app.models.user import User
@@ -134,10 +135,7 @@ async def get_user(
     """
     user = await user_crud.get_user_by_id(db, document_id)
     if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Usuario con document_id '{document_id}' no encontrado",
-        )
+        raise NotFoundError("Usuario", document_id)
     return UserResponse.model_validate(user)
 
 
@@ -202,10 +200,7 @@ async def update_user(
     """
     user = await user_crud.update_user(db, document_id, data)
     if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Usuario con document_id '{document_id}' no encontrado",
-        )
+        raise NotFoundError("Usuario", document_id)
     return UserResponse.model_validate(user)
 
 
@@ -235,8 +230,5 @@ async def delete_user(
     """
     user = await user_crud.delete_user(db, document_id)
     if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Usuario con document_id '{document_id}' no encontrado",
-        )
+        raise NotFoundError("Usuario", document_id)
     return UserResponse.model_validate(user)

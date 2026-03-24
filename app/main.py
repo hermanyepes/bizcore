@@ -36,6 +36,18 @@ from slowapi.errors import RateLimitExceeded
 from app.api.v1.router import router as api_router
 from app.core.config import settings
 from app.core.database import engine
+from app.core.exception_handlers import (
+    already_exists_handler,
+    inactive_resource_handler,
+    insufficient_stock_handler,
+    not_found_handler,
+)
+from app.core.exceptions import (
+    AlreadyExistsError,
+    InactiveResourceError,
+    InsufficientStockError,
+    NotFoundError,
+)
 from app.core.limiter import limiter
 
 # True cuando ENVIRONMENT="production" en .env (o variable de entorno del sistema).
@@ -96,6 +108,14 @@ app.state.limiter = limiter
 # Cuando el limiter rechaza una solicitud, lanza RateLimitExceeded.
 # Este handler la convierte en un 429 con un mensaje claro al cliente.
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Manejadores de excepciones de dominio propias.
+# FastAPI los ejecuta cuando cualquier endpoint lanza estas excepciones,
+# sin necesidad de try/except en cada router.
+app.add_exception_handler(NotFoundError, not_found_handler)
+app.add_exception_handler(AlreadyExistsError, already_exists_handler)
+app.add_exception_handler(InactiveResourceError, inactive_resource_handler)
+app.add_exception_handler(InsufficientStockError, insufficient_stock_handler)
 
 
 # ============================================================

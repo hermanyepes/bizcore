@@ -22,9 +22,9 @@
 #
 # ============================================================
 
-from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import InactiveResourceError, InsufficientStockError, NotFoundError
 from app.crud.inventory_movement import create_movement, get_movements
 from app.crud.product import get_product_by_id
 from app.models.inventory_movement import InventoryMovement
@@ -67,16 +67,10 @@ async def register_movement(
     product = await get_product_by_id(db, data.product_id)
 
     if product is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Producto no encontrado",
-        )
+        raise NotFoundError("Producto", data.product_id)
 
     if not product.is_active:
-        raise HTTPException(
-            status_code=400,
-            detail="No se pueden registrar movimientos para un producto inactivo",
-        )
+        raise InactiveResourceError("Producto", product.name)
 
     # ----------------------------------------------------------
     # Paso 2 + 3: calcular el nuevo stock y validar el resultado
@@ -106,16 +100,10 @@ async def register_movement(
         new_stock = product.stock - data.quantity
 
         if new_stock < 0:
-            # 400 Bad Request: la petición es válida en formato pero
-            # inválida dado el estado actual del sistema (stock insuficiente).
-            # El mensaje incluye los números para que el cliente sepa
-            # cuánto hay y cuánto pidió — más útil que "error genérico".
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Stock insuficiente. "
-                    f"Disponible: {product.stock}, solicitado: {data.quantity}"
-                ),
+            raise InsufficientStockError(
+                product.name,
+                available=product.stock,
+                requested=data.quantity,
             )
 
     else:  # AJUSTE

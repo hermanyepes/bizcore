@@ -25,9 +25,10 @@
 
 import math
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import NotFoundError
 from app.crud import product as product_crud
 from app.dependencies import get_current_user, get_db, require_admin
 from app.models.product import Product
@@ -108,10 +109,7 @@ async def get_product(
     """
     product = await product_crud.get_product_by_id(db, product_id)
     if product is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Producto con id '{product_id}' no encontrado",
-        )
+        raise NotFoundError("Producto", product_id)
     return ProductResponse.model_validate(product)
 
 
@@ -175,10 +173,7 @@ async def update_product(
 
     product = await product_crud.update_product(db, product_id, data)
     if product is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Producto con id '{product_id}' no encontrado",
-        )
+        raise NotFoundError("Producto", product_id)
     return ProductResponse.model_validate(product)
 
 
@@ -207,8 +202,5 @@ async def delete_product(
     """
     product = await product_crud.delete_product(db, product_id)
     if product is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Producto con id '{product_id}' no encontrado",
-        )
+        raise NotFoundError("Producto", product_id)
     return ProductResponse.model_validate(product)

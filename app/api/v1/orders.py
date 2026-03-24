@@ -34,9 +34,10 @@
 
 import math
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import NotFoundError
 from app.crud import order as order_crud
 from app.dependencies import get_current_user, get_db, require_admin
 from app.models.user import User
@@ -117,10 +118,7 @@ async def get_order(
     order = await order_crud.get_order_by_id(db, order_id)
 
     if order is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Pedido con id '{order_id}' no encontrado",
-        )
+        raise NotFoundError("Pedido", order_id)
 
     return OrderResponse.model_validate(order)
 
@@ -219,10 +217,7 @@ async def update_order(
     order = await order_crud.update_order(db, order_id, data)
 
     if order is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Pedido con id '{order_id}' no encontrado",
-        )
+        raise NotFoundError("Pedido", order_id)
 
     return OrderResponse.model_validate(order)
 
@@ -263,9 +258,6 @@ async def cancel_order(
     order = await order_crud.cancel_order(db, order_id)
 
     if order is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Pedido con id '{order_id}' no encontrado",
-        )
+        raise NotFoundError("Pedido", order_id)
 
     return OrderResponse.model_validate(order)

@@ -25,9 +25,10 @@
 
 from typing import Any
 
-from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.exceptions import AlreadyExistsError
 
 
 async def check_unique_field(
@@ -93,9 +94,6 @@ async def check_unique_field(
         return
 
     # Caso 3: existe un registro DIFERENTE con ese valor → conflicto real.
-    # Lanzamos 409 Conflict con un mensaje que identifica el campo y el valor
-    # para que el cliente sepa exactamente qué está duplicado.
-    raise HTTPException(
-        status_code=status.HTTP_409_CONFLICT,
-        detail=f"Ya existe un registro con {field}='{value}'",
-    )
+    # Disparamos la alarma de dominio — el manejador en main.py la
+    # convierte en HTTP 409 Conflict con un mensaje estándar.
+    raise AlreadyExistsError(model_class.__name__, field, str(value))
