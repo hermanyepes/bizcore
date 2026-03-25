@@ -3,14 +3,15 @@
 # ============================================================
 #
 # ANALOGÍA: este archivo son los meseros de BizCore para proveedores.
-# Reciben pedidos (HTTP requests), hablan con el bodeguero
-# (crud/supplier.py), y entregan el resultado al cliente (response).
+# Reciben pedidos (HTTP requests), hablan con el chef
+# (services/supplier.py), y entregan el resultado al cliente (response).
 #
-# Los meseros NO saben cómo funciona la BD — solo saben:
+# El mesero NO cocina ni valida reglas de negocio.
+# Solo sabe:
 #   - Qué pedido llegó (parámetros de la request)
 #   - Si el cliente tiene carnet (JWT validado por Depends)
 #   - Si el cliente tiene permiso (rol: cualquiera vs solo admin)
-#   - Qué traer del bodeguero (llaman a crud)
+#   - A quién llamar en la cocina (supplier_service)
 #   - Cómo presentar el plato (response_model filtra los datos)
 #
 # FLUJO DE UNA REQUEST TÍPICA:
@@ -18,20 +19,15 @@
 #   2. Ejecuta las dependencias: get_db() → require_admin()
 #   3. require_admin() verifica JWT y rol → si falla: 401 o 403
 #   4. Llama al endpoint con db + admin ya resueltos
-#   5. El endpoint verifica duplicados → llama a crud
+#   5. El endpoint delega en supplier_service → service llama al crud
 #   6. FastAPI serializa la respuesta con response_model
 #
 # ============================================================
 
-import math
-
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError
-from app.crud import supplier as supplier_crud
 from app.dependencies import get_current_user, get_db, require_admin
-from app.models.supplier import Supplier
 from app.models.user import User
 from app.schemas.supplier import (
     SupplierCreate,
@@ -39,7 +35,7 @@ from app.schemas.supplier import (
     SupplierResponse,
     SupplierUpdate,
 )
-from app.services.validation import check_unique_field
+from app.services.supplier import supplier_service
 
 # prefix="/suppliers": todas las rutas empiezan con /suppliers
 # Combinado con el prefijo del router principal → /api/v1/suppliers
@@ -65,22 +61,7 @@ async def list_suppliers(
     GET /api/v1/suppliers?is_active=true    ← solo activos
     GET /api/v1/suppliers?is_active=false   ← solo desactivados (admin)
     """
-    skip = (page - 1) * page_size
-
-    suppliers, total = await supplier_crud.get_suppliers(
-        db, skip=skip, limit=page_size, is_active=is_active
-    )
-
-    # math.ceil redondea hacia arriba: 11 proveedores / 10 por página = 2 páginas
-    pages = math.ceil(total / page_size) if total > 0 else 0
-
-    return SupplierPaginated(
-        items=[SupplierResponse.model_validate(s) for s in suppliers],
-        total=total,
-        page=page,
-        page_size=page_size,
-        pages=pages,
-    )
+    return await supplier_service.list(db, page, page_size, is_active)
 
 
 # ============================================================
@@ -100,9 +81,7 @@ async def get_supplier(
     Si supplier_id no existe en la BD → 404.
     Si el token JWT es inválido o no se envía → 401.
     """
-    supplier = await supplier_crud.get_supplier_by_id(db, supplier_id)
-    if supplier is None:
-        raise NotFoundError("Proveedor", supplier_id)
+    supplier = await supplier_service.get(db, supplier_id)
     return SupplierResponse.model_validate(supplier)
 
 
@@ -122,17 +101,12 @@ async def create_supplier(
     Body: SupplierCreate (JSON)
     Requiere: JWT con rol Administrador
 
-    Verifica duplicados de nombre Y de email antes de insertar,
-    para devolver 409 con mensaje claro en vez de un 500 críptico
-    de PostgreSQL por violación de constraint unique.
+    ¿Por qué 201 y no 200?
+    200 OK      → éxito, el recurso ya existía
+    201 Created → éxito, se creó un nuevo recurso
+    POST que crea algo siempre devuelve 201.
     """
-    # Verificar unicidad de nombre y email antes de insertar.
-    # contact_email es opcional — solo verificar si viene en el payload.
-    await check_unique_field(db, Supplier, "name", data.name)
-    if data.contact_email is not None:
-        await check_unique_field(db, Supplier, "contact_email", data.contact_email)
-
-    supplier = await supplier_crud.create_supplier(db, data)
+    supplier = await supplier_service.create(db, data)
     return SupplierResponse.model_validate(supplier)
 
 
@@ -158,16 +132,7 @@ async def update_supplier(
     - Desactivar proveedor:     {"is_active": false}
     - Cambiar nombre y email:   {"name": "Nuevo Nombre", "contact_email": "nuevo@mail.com"}
     """
-    # Si el cliente quiere renombrar o cambiar el email, verificar que
-    # el nuevo valor no lo esté usando OTRO proveedor (no él mismo).
-    if data.name is not None:
-        await check_unique_field(db, Supplier, "name", data.name, exclude_id=supplier_id)
-    if data.contact_email is not None:
-        await check_unique_field(db, Supplier, "contact_email", data.contact_email, exclude_id=supplier_id)
-
-    supplier = await supplier_crud.update_supplier(db, supplier_id, data)
-    if supplier is None:
-        raise NotFoundError("Proveedor", supplier_id)
+    supplier = await supplier_service.update(db, supplier_id, data)
     return SupplierResponse.model_validate(supplier)
 
 
@@ -193,7 +158,5 @@ async def delete_supplier(
     En Phase 5, los pedidos referenciarán proveedores. Si borramos
     la fila, esos registros históricos quedarían huérfanos.
     """
-    supplier = await supplier_crud.delete_supplier(db, supplier_id)
-    if supplier is None:
-        raise NotFoundError("Proveedor", supplier_id)
+    supplier = await supplier_service.delete(db, supplier_id)
     return SupplierResponse.model_validate(supplier)

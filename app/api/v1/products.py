@@ -3,14 +3,15 @@
 # ============================================================
 #
 # ANALOGÍA: este archivo son los meseros de BizCore para productos.
-# Reciben pedidos (HTTP requests), hablan con el bodeguero
-# (crud/product.py), y entregan el resultado al cliente (response).
+# Reciben pedidos (HTTP requests), hablan con el chef
+# (services/product.py), y entregan el resultado al cliente (response).
 #
-# Los meseros NO saben cómo funciona la BD — solo saben:
+# El mesero NO cocina ni valida reglas de negocio.
+# Solo sabe:
 #   - Qué pedido llegó (parámetros de la request)
 #   - Si el cliente tiene carnet (JWT validado por Depends)
 #   - Si el cliente tiene permiso (rol: cualquiera vs solo admin)
-#   - Qué traer del bodeguero (llaman a crud)
+#   - A quién llamar en la cocina (product_service)
 #   - Cómo presentar el plato (response_model filtra los datos)
 #
 # FLUJO DE UNA REQUEST TÍPICA:
@@ -18,20 +19,15 @@
 #   2. Ejecuta las dependencias: get_db() → require_admin()
 #   3. require_admin() verifica JWT y rol → si falla: 401 o 403
 #   4. Llama al endpoint con db + admin ya resueltos
-#   5. El endpoint verifica duplicados → llama a crud
+#   5. El endpoint delega en product_service → service llama al crud
 #   6. FastAPI serializa la respuesta con response_model
 #
 # ============================================================
 
-import math
-
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError
-from app.crud import product as product_crud
 from app.dependencies import get_current_user, get_db, require_admin
-from app.models.product import Product
 from app.models.user import User
 from app.schemas.product import (
     ProductCreate,
@@ -39,7 +35,7 @@ from app.schemas.product import (
     ProductResponse,
     ProductUpdate,
 )
-from app.services.validation import check_unique_field
+from app.services.product import product_service
 
 # prefix="/products": todas las rutas empiezan con /products
 # Combinado con el prefijo del router principal → /api/v1/products
@@ -69,22 +65,7 @@ async def list_products(
 
     Filtros opcionales — si no se envían, devuelve todos los registros.
     """
-    skip = (page - 1) * page_size
-
-    products, total = await product_crud.get_products(
-        db, skip=skip, limit=page_size, is_active=is_active, category=category
-    )
-
-    # math.ceil redondea hacia arriba: 11 productos / 10 por página = 2 páginas
-    pages = math.ceil(total / page_size) if total > 0 else 0
-
-    return ProductPaginated(
-        items=[ProductResponse.model_validate(p) for p in products],
-        total=total,
-        page=page,
-        page_size=page_size,
-        pages=pages,
-    )
+    return await product_service.list(db, page, page_size, is_active, category)
 
 
 # ============================================================
@@ -107,9 +88,7 @@ async def get_product(
     Si alguien envía /products/abc, FastAPI devuelve 422 antes de
     llegar al endpoint — "abc" no es un entero válido.
     """
-    product = await product_crud.get_product_by_id(db, product_id)
-    if product is None:
-        raise NotFoundError("Producto", product_id)
+    product = await product_service.get(db, product_id)
     return ProductResponse.model_validate(product)
 
 
@@ -129,17 +108,12 @@ async def create_product(
     Body: ProductCreate (JSON)
     Requiere: JWT con rol Administrador
 
-    ¿Por qué verificar el nombre duplicado antes de insertar?
-    `name` tiene unique=True en la BD. Si no verificamos aquí,
-    PostgreSQL lanzaría un IntegrityError que FastAPI convierte en
-    un 500 genérico — un error confuso para el cliente.
-    Es mejor detectarlo nosotros y devolver un 409 claro.
+    ¿Por qué 201 y no 200?
+    200 OK      → éxito, el recurso ya existía
+    201 Created → éxito, se creó un nuevo recurso
+    POST que crea algo siempre devuelve 201.
     """
-    # Verificar que no exista ya un producto con ese nombre.
-    # Product usa 'id' como PK (autoincremental) → pk_field por defecto.
-    await check_unique_field(db, Product, "name", data.name)
-
-    product = await product_crud.create_product(db, data)
+    product = await product_service.create(db, data)
     return ProductResponse.model_validate(product)
 
 
@@ -166,14 +140,7 @@ async def update_product(
     - Desactivar el producto:    {"is_active": false}
     - Cambiar nombre y precio:   {"name": "Café Premium", "price": 32000}
     """
-    # Si el cliente quiere renombrar el producto, verificar que el
-    # nuevo nombre no esté siendo usado por OTRO producto.
-    if data.name is not None:
-        await check_unique_field(db, Product, "name", data.name, exclude_id=product_id)
-
-    product = await product_crud.update_product(db, product_id, data)
-    if product is None:
-        raise NotFoundError("Producto", product_id)
+    product = await product_service.update(db, product_id, data)
     return ProductResponse.model_validate(product)
 
 
@@ -200,7 +167,5 @@ async def delete_product(
     que referencian este producto. Si lo borramos, esos registros
     quedarían huérfanos — sin producto al que apuntar.
     """
-    product = await product_crud.delete_product(db, product_id)
-    if product is None:
-        raise NotFoundError("Producto", product_id)
+    product = await product_service.delete(db, product_id)
     return ProductResponse.model_validate(product)
