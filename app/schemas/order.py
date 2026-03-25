@@ -33,6 +33,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.common import PaginatedResponse
+
 # ============================================================
 # Schemas de INPUT — lo que el cliente envía
 # ============================================================
@@ -180,18 +182,6 @@ class OrderResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class OrderPaginated(BaseModel):
-    """
-    Respuesta paginada para el listado de pedidos.
-
-    GET /api/v1/orders?page=1&page_size=10
-
-    Mismo patrón que los demás módulos paginados.
-    Cada elemento del listado incluye sus ítems anidados.
-    """
-
-    items: list[OrderResponse]  # pedidos de esta página
-    total: int                  # total de pedidos en la BD
-    page: int                   # página actual
-    page_size: int              # pedidos por página
-    pages: int                  # total de páginas
+# Especialización del schema genérico para pedidos.
+# Equivale a una clase con items: list[OrderResponse], total, page, page_size, pages.
+OrderPaginated = PaginatedResponse[OrderResponse]
