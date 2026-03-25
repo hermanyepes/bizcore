@@ -3,13 +3,14 @@
 # ============================================================
 #
 # ANALOGÍA: este archivo son los meseros de BizCore.
-# Reciben pedidos (HTTP requests), hablan con el guardabodega
-# (crud/user.py), y entregan el resultado al cliente (response).
+# Reciben pedidos (HTTP requests), hablan con el chef
+# (services/user.py), y entregan el resultado al cliente (response).
 #
-# Los meseros NO saben cómo funciona la BD — solo saben:
+# El mesero NO cocina ni valida reglas de negocio.
+# Solo sabe:
 #   - Qué pedido llegó (parámetros de la request)
 #   - Si el cliente tiene carnet (JWT validado por Depends)
-#   - Qué traer del guardabodega (llaman a crud)
+#   - A quién llamar en la cocina (user_service)
 #   - Cómo presentar el plato (response_model filtra los datos)
 #
 # FLUJO DE UNA REQUEST TÍPICA:
@@ -17,22 +18,18 @@
 #   2. Ejecuta las dependencias: get_db() → get_current_user()
 #   3. get_current_user() verifica el JWT → si falla: 401
 #   4. Llama al endpoint con db + current_user ya resueltos
-#   5. El endpoint llama a crud → crud habla con PostgreSQL
+#   5. El endpoint delega en user_service → user_service llama al crud
 #   6. FastAPI serializa la respuesta con response_model
 #
 # ============================================================
 
-import math
-
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError
-from app.crud import user as user_crud
 from app.dependencies import get_current_user, get_db, require_admin
 from app.models.user import User
 from app.schemas.user import UserCreate, UserPaginated, UserResponse, UserUpdate
-from app.services.validation import check_unique_field
+from app.services.user import user_service
 
 # prefix="/users": todas las rutas empiezan con /users
 # Combinado con el prefijo del router principal → /api/v1/users
@@ -62,22 +59,7 @@ async def list_users(
     Filtros opcionales — si no se envían, devuelve todos los registros.
     Se pueden combinar: ?is_active=true&role=Administrador
     """
-    skip = (page - 1) * page_size
-
-    users, total = await user_crud.get_users(
-        db, skip=skip, limit=page_size, is_active=is_active, role=role
-    )
-
-    # math.ceil redondea hacia arriba: 11 usuarios / 10 por página = 2 páginas
-    pages = math.ceil(total / page_size) if total > 0 else 0
-
-    return UserPaginated(
-        items=[UserResponse.model_validate(u) for u in users],
-        total=total,
-        page=page,
-        page_size=page_size,
-        pages=pages,
-    )
+    return await user_service.list(db, page, page_size, is_active, role)
 
 
 # ============================================================
@@ -97,15 +79,10 @@ async def get_me(
     GET /api/v1/users/me
     Requiere: JWT válido (cualquier rol)
 
-    ¿Por qué no necesita db aquí?
+    ¿Por qué no llama a user_service.get()?
     get_current_user ya hizo la query a la BD para validar el token.
     El objeto `current_user` que nos entrega ya es el usuario completo
     de PostgreSQL — no hay que volver a buscarlo.
-
-    ¿Por qué el frontend necesita este endpoint?
-    En la navbar de Angular se mostrará "Hola, Juan Pérez (Administrador)".
-    Sin este endpoint, Angular tendría que saber el document_id del usuario
-    para hacer GET /users/{id}. Con /me solo necesita el token.
     """
     # El JWT ya contiene la identidad — simplemente retornamos el usuario
     return UserResponse.model_validate(current_user)
@@ -133,9 +110,7 @@ async def get_user(
     404 Not Found   → los datos son válidos pero el recurso no existe
     Un document_id bien formado que no está en la BD → 404.
     """
-    user = await user_crud.get_user_by_id(db, document_id)
-    if user is None:
-        raise NotFoundError("Usuario", document_id)
+    user = await user_service.get(db, document_id)
     return UserResponse.model_validate(user)
 
 
@@ -159,19 +134,8 @@ async def create_user(
     200 OK      → éxito, el recurso ya existía
     201 Created → éxito, se creó un nuevo recurso
     POST que crea algo siempre devuelve 201.
-
-    ¿Por qué verificar duplicados antes de llamar a create_user?
-    Si no lo hacemos, PostgreSQL lanzará un IntegrityError (UNIQUE violation).
-    FastAPI lo convertiría en un 500 Internal Server Error genérico.
-    Es mejor capturarlo y devolver un 409 Conflict con un mensaje claro.
     """
-    # Verificar unicidad de email y document_id antes de insertar.
-    # pk_field="document_id" porque la PK de User no es 'id' sino 'document_id'.
-    # En un POST no hay exclude_id — cualquier registro existente es un duplicado.
-    await check_unique_field(db, User, "email", data.email, pk_field="document_id")
-    await check_unique_field(db, User, "document_id", data.document_id, pk_field="document_id")
-
-    user = await user_crud.create_user(db, data)
+    user = await user_service.create(db, data)
     return UserResponse.model_validate(user)
 
 
@@ -198,9 +162,7 @@ async def update_user(
     En APIs simples se usa PUT para ambos casos — PATCH es más correcto
     semánticamente pero menos común en proyectos pequeños.
     """
-    user = await user_crud.update_user(db, document_id, data)
-    if user is None:
-        raise NotFoundError("Usuario", document_id)
+    user = await user_service.update(db, document_id, data)
     return UserResponse.model_validate(user)
 
 
@@ -228,7 +190,5 @@ async def delete_user(
     "Usuario Juan Pérez (1000000001) fue desactivado."
     Eso es mejor UX en una aplicación de gestión.
     """
-    user = await user_crud.delete_user(db, document_id)
-    if user is None:
-        raise NotFoundError("Usuario", document_id)
+    user = await user_service.delete(db, document_id)
     return UserResponse.model_validate(user)
