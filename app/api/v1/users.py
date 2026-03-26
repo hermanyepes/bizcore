@@ -42,12 +42,12 @@ router = APIRouter(prefix="/users", tags=["users"])
 # ============================================================
 @router.get("/", response_model=UserPaginated)
 async def list_users(
-    page: int = Query(default=1, ge=1),               # mínimo página 1
-    page_size: int = Query(default=10, ge=1, le=100), # entre 1 y 100 registros
-    is_active: bool | None = Query(default=None),     # True/False/None (todos)
-    role: str | None = Query(default=None),           # 'Administrador'/'Empleado'/None
+    page: int = Query(default=1, ge=1),  # mínimo página 1
+    page_size: int = Query(default=10, ge=1, le=100),  # entre 1 y 100 registros
+    is_active: bool | None = Query(default=None),  # True/False/None (todos)
+    role: str | None = Query(default=None),  # 'Administrador'/'Empleado'/None
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),   # cualquier usuario autenticado
+    current_user: User = Depends(get_current_user),  # cualquier usuario autenticado
 ) -> UserPaginated:
     """
     Lista usuarios con paginación y filtros opcionales.

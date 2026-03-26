@@ -49,13 +49,19 @@ def upgrade() -> None:
     # --- inventory_movements ---
     # product_id: filtro en get_movements() — historial de un producto
     # movement_type: filtro en get_movements() — ENTRADA | SALIDA
-    op.create_index("ix_inventory_movements_product_id", "inventory_movements", ["product_id"])
-    op.create_index("ix_inventory_movements_movement_type", "inventory_movements", ["movement_type"])
+    op.create_index(
+        "ix_inventory_movements_product_id", "inventory_movements", ["product_id"]
+    )
+    op.create_index(
+        "ix_inventory_movements_movement_type", "inventory_movements", ["movement_type"]
+    )
 
 
 def downgrade() -> None:
     # Revertir en orden inverso al upgrade
-    op.drop_index("ix_inventory_movements_movement_type", table_name="inventory_movements")
+    op.drop_index(
+        "ix_inventory_movements_movement_type", table_name="inventory_movements"
+    )
     op.drop_index("ix_inventory_movements_product_id", table_name="inventory_movements")
     op.drop_index("ix_orders_status", table_name="orders")
     op.drop_index("ix_orders_supplier_id", table_name="orders")

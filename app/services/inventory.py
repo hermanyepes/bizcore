@@ -24,7 +24,11 @@
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import InactiveResourceError, InsufficientStockError, NotFoundError
+from app.core.exceptions import (
+    InactiveResourceError,
+    InsufficientStockError,
+    NotFoundError,
+)
 from app.crud.inventory_movement import create_movement, get_movements
 from app.crud.product import get_product_by_id
 from app.models.inventory_movement import InventoryMovement

@@ -147,7 +147,9 @@ class UserService:
         await check_unique_field(db, User, "email", data.email, pk_field="document_id")
 
         # Verificar que el número de documento no esté ya registrado.
-        await check_unique_field(db, User, "document_id", data.document_id, pk_field="document_id")
+        await check_unique_field(
+            db, User, "document_id", data.document_id, pk_field="document_id"
+        )
 
         return await user_crud.create_user(db, data)
 

@@ -29,7 +29,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import NotFoundError
 from app.crud import product as product_crud
 from app.models.product import Product
-from app.schemas.product import ProductCreate, ProductPaginated, ProductResponse, ProductUpdate
+from app.schemas.product import (
+    ProductCreate,
+    ProductPaginated,
+    ProductResponse,
+    ProductUpdate,
+)
 from app.services.validation import check_unique_field
 
 

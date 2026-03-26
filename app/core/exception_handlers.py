@@ -50,7 +50,9 @@ async def not_found_handler(request: Request, exc: NotFoundError) -> JSONRespons
     )
 
 
-async def already_exists_handler(request: Request, exc: AlreadyExistsError) -> JSONResponse:
+async def already_exists_handler(
+    request: Request, exc: AlreadyExistsError
+) -> JSONResponse:
     """Traduce AlreadyExistsError → HTTP 409 Conflict."""
     return JSONResponse(
         status_code=409,

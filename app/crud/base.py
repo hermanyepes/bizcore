@@ -58,19 +58,19 @@ async def get_paginated[T](
       - total: cantidad total de registros que coinciden con los filtros
     """
     # Construir las dos queries base — sin filtros aún
-    base_query  = select(model)
+    base_query = select(model)
     count_query = select(func.count()).select_from(model)
 
     # Aplicar cada filtro a AMBAS queries en el mismo loop.
     # Esta es la clave del helper: es imposible olvidarse de
     # aplicar un filtro a count_query, porque siempre van juntas.
-    for f in (filters or []):
-        base_query  = base_query.where(f)
+    for f in filters or []:
+        base_query = base_query.where(f)
         count_query = count_query.where(f)
 
     # Opciones de carga de relaciones — solo en base_query.
     # count_query nunca necesita cargar relaciones: solo cuenta filas.
-    for opt in (options or []):
+    for opt in options or []:
         base_query = base_query.options(opt)
 
     # Orden — solo en base_query.

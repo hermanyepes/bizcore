@@ -65,7 +65,9 @@ async def lifespan(app: FastAPI):
     """
     # === STARTUP ===
     print("BizCore arrancando...")
-    print("BD conectada:", settings.DATABASE_URL.split("@")[-1])  # no exponer credenciales en el log
+    print(
+        "BD conectada:", settings.DATABASE_URL.split("@")[-1]
+    )  # no exponer credenciales en el log
     if not _is_production:
         print("Aplicación lista en http://localhost:8000/docs")
     else:
@@ -144,7 +146,9 @@ async def add_security_headers(request, call_next):
     # Prohíbe que este sitio se cargue dentro de un <iframe> de otra página (anti-clickjacking)
     response.headers["X-Frame-Options"] = "DENY"
     # Fuerza HTTPS por 1 año en el navegador, incluyendo subdominios
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["Strict-Transport-Security"] = (
+        "max-age=31536000; includeSubDomains"
+    )
     # Al navegar a otro sitio, solo envía el origen (bizcore.com), nunca la URL completa
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
@@ -161,6 +165,7 @@ app.include_router(api_router)
 # ============================================================
 # Endpoints de verificación
 # ============================================================
+
 
 @app.get("/")
 async def root():
@@ -186,5 +191,7 @@ async def health_check():
     """
     return {
         "status": "healthy",
-        "database": settings.DATABASE_URL.split("@")[-1],  # muestra host/db sin credenciales
+        "database": settings.DATABASE_URL.split("@")[
+            -1
+        ],  # muestra host/db sin credenciales
     }

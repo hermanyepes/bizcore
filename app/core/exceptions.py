@@ -30,6 +30,7 @@
 
 class BizCoreError(Exception):
     """Base de todas las excepciones de dominio de BizCore."""
+
     pass
 
 

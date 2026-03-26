@@ -48,11 +48,11 @@ router = APIRouter(prefix="/suppliers", tags=["suppliers"])
 # ============================================================
 @router.get("/", response_model=SupplierPaginated)
 async def list_suppliers(
-    page: int = Query(default=1, ge=1),               # mínimo página 1
-    page_size: int = Query(default=10, ge=1, le=100), # entre 1 y 100 registros
-    is_active: bool | None = Query(default=None),     # True/False/None (todos)
+    page: int = Query(default=1, ge=1),  # mínimo página 1
+    page_size: int = Query(default=10, ge=1, le=100),  # entre 1 y 100 registros
+    is_active: bool | None = Query(default=None),  # True/False/None (todos)
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),   # cualquier usuario autenticado
+    current_user: User = Depends(get_current_user),  # cualquier usuario autenticado
 ) -> SupplierPaginated:
     """
     Lista proveedores con paginación y filtro opcional.

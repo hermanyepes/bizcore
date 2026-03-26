@@ -43,7 +43,8 @@ async def create_refresh_token_db(
     token = RefreshToken(
         user_id=user_id,
         token_hash=hash_refresh_token(raw_token),
-        expires_at=datetime.now(UTC) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+        expires_at=datetime.now(UTC)
+        + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
     )
     db.add(token)
     await db.commit()

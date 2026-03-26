@@ -47,9 +47,9 @@ class LowStockProduct(BaseModel):
     services/dashboard.py.
     """
 
-    id: int       # identificador del producto (para enlazar si la UI lo necesita)
-    name: str     # nombre para mostrar en el tablero
-    stock: int    # unidades disponibles (siempre < 10 por definición)
+    id: int  # identificador del producto (para enlazar si la UI lo necesita)
+    name: str  # nombre para mostrar en el tablero
+    stock: int  # unidades disponibles (siempre < 10 por definición)
 
 
 class DashboardSummary(BaseModel):

@@ -59,8 +59,8 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 # ============================================================
 @router.get("/", response_model=OrderPaginated)
 async def list_orders(
-    page: int = Query(default=1, ge=1),               # mínimo página 1
-    page_size: int = Query(default=10, ge=1, le=100), # entre 1 y 100 registros
+    page: int = Query(default=1, ge=1),  # mínimo página 1
+    page_size: int = Query(default=10, ge=1, le=100),  # entre 1 y 100 registros
     supplier_id: int | None = None,
     status: str | None = Query(default=None),  # 'PENDIENTE'/'RECIBIDO'/'CANCELADO'
     db: AsyncSession = Depends(get_db),

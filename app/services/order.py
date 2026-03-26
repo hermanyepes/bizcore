@@ -47,7 +47,11 @@
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import InactiveResourceError, InsufficientStockError, NotFoundError
+from app.core.exceptions import (
+    InactiveResourceError,
+    InsufficientStockError,
+    NotFoundError,
+)
 from app.crud.order import get_order_by_id
 from app.crud.product import get_product_by_id
 from app.crud.supplier import get_supplier_by_id

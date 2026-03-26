@@ -153,7 +153,11 @@ class SupplierService:
 
         if data.contact_email is not None:
             await check_unique_field(
-                db, Supplier, "contact_email", data.contact_email, exclude_id=supplier_id
+                db,
+                Supplier,
+                "contact_email",
+                data.contact_email,
+                exclude_id=supplier_id,
             )
 
         supplier = await supplier_crud.update_supplier(db, supplier_id, data)

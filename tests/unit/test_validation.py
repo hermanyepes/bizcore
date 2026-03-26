@@ -40,6 +40,7 @@ from app.services.validation import check_unique_field
 # Están aquí (y no en conftest.py) porque son específicas de este test.
 # ============================================================
 
+
 def make_product(name: str) -> Product:
     """Crea un Product mínimo para usar en tests de unicidad."""
     return Product(

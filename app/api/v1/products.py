@@ -48,12 +48,12 @@ router = APIRouter(prefix="/products", tags=["products"])
 # ============================================================
 @router.get("/", response_model=ProductPaginated)
 async def list_products(
-    page: int = Query(default=1, ge=1),               # mínimo página 1
-    page_size: int = Query(default=10, ge=1, le=100), # entre 1 y 100 registros
-    is_active: bool | None = Query(default=None),     # True/False/None (todos)
-    category: str | None = Query(default=None),       # ej: 'Bebidas', 'Snacks'
+    page: int = Query(default=1, ge=1),  # mínimo página 1
+    page_size: int = Query(default=10, ge=1, le=100),  # entre 1 y 100 registros
+    is_active: bool | None = Query(default=None),  # True/False/None (todos)
+    category: str | None = Query(default=None),  # ej: 'Bebidas', 'Snacks'
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),   # cualquier usuario autenticado
+    current_user: User = Depends(get_current_user),  # cualquier usuario autenticado
 ) -> ProductPaginated:
     """
     Lista productos con paginación y filtros opcionales.

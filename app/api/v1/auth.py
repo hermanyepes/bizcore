@@ -55,10 +55,11 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 # POST /auth/login
 # ============================================================
 
+
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit(settings.LOGIN_RATE_LIMIT)
 async def login(
-    request: Request,        # requerido por slowapi para leer la IP del cliente
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     data: LoginRequest,
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
@@ -114,6 +115,7 @@ async def login(
 # POST /auth/refresh
 # ============================================================
 
+
 @router.post("/refresh", response_model=TokenResponse)
 @limiter.limit(settings.AUTHENTICATED_RATE_LIMIT)
 async def refresh(
@@ -148,7 +150,9 @@ async def refresh(
     # simultáneamente con el mismo token, la segunda espera a que la primera
     # termine. Cuando la primera revoca el token y hace commit, la segunda
     # lo encuentra con is_revoked=True y recibe 401. Race condition eliminada.
-    stored_token = await get_valid_refresh_token(db, data.refresh_token, for_update=True)
+    stored_token = await get_valid_refresh_token(
+        db, data.refresh_token, for_update=True
+    )
     if stored_token is None:
         raise invalid_token
 
@@ -177,7 +181,9 @@ async def refresh(
         data={"sub": user.document_id, "role": user.role}
     )
     new_raw_refresh = create_refresh_token()
-    await create_refresh_token_db(db, user_id=user.document_id, raw_token=new_raw_refresh)
+    await create_refresh_token_db(
+        db, user_id=user.document_id, raw_token=new_raw_refresh
+    )
 
     return TokenResponse(access_token=new_access_token, refresh_token=new_raw_refresh)
 
@@ -185,6 +191,7 @@ async def refresh(
 # ============================================================
 # POST /auth/logout
 # ============================================================
+
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
 @limiter.limit(settings.AUTHENTICATED_RATE_LIMIT)

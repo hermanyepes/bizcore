@@ -11,7 +11,7 @@
 #   3. APIResponse[T]       — sobre estándar de respuesta    (v2)
 # ============================================================
 
-from typing import Generic, Self, TypeVar
+from typing import Self, TypeVar
 
 from pydantic import BaseModel
 
@@ -26,7 +26,7 @@ T = TypeVar("T", bound=BaseModel)
 # ============================================================
 # 1. PaginatedResponse[T] — usado en v1
 # ============================================================
-class PaginatedResponse(BaseModel, Generic[T]):
+class PaginatedResponse[T: BaseModel](BaseModel):
     """
     Schema genérico para respuestas paginadas.
 
@@ -90,7 +90,7 @@ class ErrorDetail(BaseModel):
 # ============================================================
 # 3. APIResponse[T] — el sobre estándar (diseñado para v2)
 # ============================================================
-class APIResponse(BaseModel, Generic[T]):
+class APIResponse[T: BaseModel](BaseModel):
     """
     Sobre estándar para todas las respuestas de la API v2.
 
@@ -155,4 +155,6 @@ class APIResponse(BaseModel, Generic[T]):
             return APIResponse.fail("not_found", "Usuario 1000000001 no existe.")
         """
         # Caja ❌: success=False, data vacío, error con el detalle
-        return cls(success=False, data=None, error=ErrorDetail(code=code, message=message))
+        return cls(
+            success=False, data=None, error=ErrorDetail(code=code, message=message)
+        )

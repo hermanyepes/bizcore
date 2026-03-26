@@ -143,8 +143,8 @@ class OrderItemResponse(BaseModel):
     order_id: int
     product_id: int
     quantity: int
-    unit_price: int   # precio congelado al momento del pedido
-    subtotal: int     # quantity × unit_price, guardado en la BD
+    unit_price: int  # precio congelado al momento del pedido
+    subtotal: int  # quantity × unit_price, guardado en la BD
 
     model_config = ConfigDict(from_attributes=True)
 
