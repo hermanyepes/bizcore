@@ -29,6 +29,7 @@ from httpx import AsyncClient
 # Así aislamos el middleware de cualquier lógica de negocio.
 # ============================================================
 
+
 @pytest.mark.anyio
 async def test_header_x_content_type_options(client: AsyncClient):
     """
@@ -88,6 +89,7 @@ async def test_header_referrer_policy(client: AsyncClient):
 # no está atado a una ruta específica.
 # ============================================================
 
+
 @pytest.mark.anyio
 async def test_security_headers_presentes_en_health(client: AsyncClient):
     """
@@ -100,7 +102,10 @@ async def test_security_headers_presentes_en_health(client: AsyncClient):
     response = await client.get("/health")
     assert response.headers.get("x-content-type-options") == "nosniff"
     assert response.headers.get("x-frame-options") == "DENY"
-    assert response.headers.get("strict-transport-security") == "max-age=31536000; includeSubDomains"
+    assert (
+        response.headers.get("strict-transport-security")
+        == "max-age=31536000; includeSubDomains"
+    )
     assert response.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
 
 
@@ -110,6 +115,7 @@ async def test_security_headers_presentes_en_health(client: AsyncClient):
 # Un middleware mal implementado podría saltarse respuestas de
 # error (4xx/5xx). Verificamos que también aparecen en un 404.
 # ============================================================
+
 
 @pytest.mark.anyio
 async def test_security_headers_presentes_en_404(client: AsyncClient):

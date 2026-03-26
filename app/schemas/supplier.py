@@ -22,6 +22,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from app.schemas.common import PaginatedResponse
+
 
 class SupplierCreate(BaseModel):
     """
@@ -96,18 +98,6 @@ class SupplierResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class SupplierPaginated(BaseModel):
-    """
-    Respuesta paginada para el listado de proveedores.
-
-    GET /api/v1/suppliers?page=1&page_size=10
-
-    Mismo patrón que ProductPaginated: devolver una página
-    en vez de todos los registros de golpe.
-    """
-
-    items: list[SupplierResponse]  # proveedores de esta página
-    total: int                     # total de proveedores en la BD
-    page: int                      # página actual
-    page_size: int                 # cuántos proveedores por página
-    pages: int                     # total de páginas
+# Especialización del schema genérico para proveedores.
+# Equivale a una clase con items: list[SupplierResponse], total, page, page_size, pages.
+SupplierPaginated = PaginatedResponse[SupplierResponse]

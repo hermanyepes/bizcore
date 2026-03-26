@@ -105,9 +105,7 @@ class RefreshToken(Base):
     # alguien lo está reutilizando → señal de ataque.
     # (Limpieza periódica de tokens expirados: tarea de mantenimiento)
     # ----------------------------------------------------------
-    is_revoked: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False
-    )
+    is_revoked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # ----------------------------------------------------------
     # Auditoría — cuándo fue creada esta sesión

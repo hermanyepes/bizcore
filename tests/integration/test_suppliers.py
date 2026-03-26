@@ -163,9 +163,7 @@ async def test_obtener_proveedor_sin_token_devuelve_401(client: httpx.AsyncClien
 # ============================================================
 
 
-async def test_crear_proveedor_como_admin(
-    client: httpx.AsyncClient, admin_token: str
-):
+async def test_crear_proveedor_como_admin(client: httpx.AsyncClient, admin_token: str):
     """
     POST /suppliers con token de Administrador devuelve 201 y el proveedor creado.
 
@@ -192,9 +190,7 @@ async def test_crear_proveedor_como_admin(
     assert "created_at" in body
 
 
-async def test_crear_proveedor_sin_email(
-    client: httpx.AsyncClient, admin_token: str
-):
+async def test_crear_proveedor_sin_email(client: httpx.AsyncClient, admin_token: str):
     """
     POST /suppliers sin contact_email devuelve 201.
 

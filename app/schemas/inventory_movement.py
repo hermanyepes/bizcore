@@ -29,6 +29,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.common import PaginatedResponse
+
 
 class InventoryMovementCreate(BaseModel):
     """
@@ -100,20 +102,6 @@ class InventoryMovementResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class InventoryMovementPaginated(BaseModel):
-    """
-    Respuesta paginada para el historial de movimientos.
-
-    GET /api/v1/inventory?page=1&page_size=10
-    GET /api/v1/inventory?product_id=5&page=1
-
-    ANALOGÍA: como el extracto bancario paginado — no traes todos los
-    movimientos desde el inicio de los tiempos, traes una página y
-    sabés cuántas páginas hay en total.
-    """
-
-    items: list[InventoryMovementResponse]  # movimientos de esta página
-    total: int                              # total de movimientos en la BD
-    page: int                              # página actual
-    page_size: int                         # movimientos por página
-    pages: int                             # total de páginas
+# Especialización del schema genérico para movimientos de inventario.
+# Equivale a una clase con items: list[InventoryMovementResponse], total, page, page_size, pages.
+InventoryMovementPaginated = PaginatedResponse[InventoryMovementResponse]

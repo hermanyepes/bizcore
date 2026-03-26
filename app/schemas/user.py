@@ -23,6 +23,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from app.schemas.common import PaginatedResponse
+
 
 class UserCreate(BaseModel):
     """
@@ -108,18 +110,6 @@ class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class UserPaginated(BaseModel):
-    """
-    Respuesta paginada para el listado de usuarios.
-
-    ANALOGÍA: como el índice de un libro con páginas.
-    No traes todo el libro — traes una página y sabes cuántas hay.
-
-    GET /api/v1/users?page=1&page_size=10
-    """
-
-    items: list[UserResponse]
-    total: int        # total de usuarios en la BD (para calcular páginas)
-    page: int         # página actual
-    page_size: int    # cuántos por página
-    pages: int        # total de páginas
+# Especialización del schema genérico para usuarios.
+# Equivale a una clase con items: list[UserResponse], total, page, page_size, pages.
+UserPaginated = PaginatedResponse[UserResponse]

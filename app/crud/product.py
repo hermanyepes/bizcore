@@ -31,9 +31,7 @@ async def get_product_by_id(db: AsyncSession, product_id: int) -> Product | None
     Devuelve el objeto Product si existe, None si no.
     El endpoint usa este resultado para devolver 404 si es None.
     """
-    result = await db.execute(
-        select(Product).where(Product.id == product_id)
-    )
+    result = await db.execute(select(Product).where(Product.id == product_id))
     return result.scalar_one_or_none()
 
 
@@ -48,9 +46,7 @@ async def get_product_by_name(db: AsyncSession, name: str) -> Product | None:
     mejor detectarlo aquí y devolver un mensaje claro que dejar que
     PostgreSQL lance un error críptico de constraint violation.
     """
-    result = await db.execute(
-        select(Product).where(Product.name == name)
-    )
+    result = await db.execute(select(Product).where(Product.name == name))
     return result.scalar_one_or_none()
 
 

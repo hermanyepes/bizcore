@@ -31,9 +31,7 @@ async def get_supplier_by_id(db: AsyncSession, supplier_id: int) -> Supplier | N
     Devuelve el objeto Supplier si existe, None si no.
     El endpoint usa este resultado para devolver 404 si es None.
     """
-    result = await db.execute(
-        select(Supplier).where(Supplier.id == supplier_id)
-    )
+    result = await db.execute(select(Supplier).where(Supplier.id == supplier_id))
     return result.scalar_one_or_none()
 
 
@@ -47,9 +45,7 @@ async def get_supplier_by_name(db: AsyncSession, name: str) -> Supplier | None:
     mensaje claro, en vez de dejar que PostgreSQL lance un error
     críptico de constraint violation.
     """
-    result = await db.execute(
-        select(Supplier).where(Supplier.name == name)
-    )
+    result = await db.execute(select(Supplier).where(Supplier.name == name))
     return result.scalar_one_or_none()
 
 
@@ -62,9 +58,7 @@ async def get_supplier_by_email(db: AsyncSession, email: str) -> Supplier | None
     antes de que PostgreSQL los rechace con un error de constraint.
     El endpoint usa esto para devolver 409 con un mensaje legible.
     """
-    result = await db.execute(
-        select(Supplier).where(Supplier.contact_email == email)
-    )
+    result = await db.execute(select(Supplier).where(Supplier.contact_email == email))
     return result.scalar_one_or_none()
 
 

@@ -228,8 +228,8 @@ async def test_crear_pedido_snapshot_precio_y_subtotal_correcto(
 
     assert response.status_code == 201
     item = response.json()["items"][0]
-    assert item["unit_price"] == product.price           # snapshot correcto
-    assert item["subtotal"] == product.price * 3         # 15000 × 3 = 45000
+    assert item["unit_price"] == product.price  # snapshot correcto
+    assert item["subtotal"] == product.price * 3  # 15000 × 3 = 45000
 
 
 async def test_crear_pedido_decrementa_stock_del_producto(

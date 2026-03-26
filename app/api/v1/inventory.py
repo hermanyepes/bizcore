@@ -33,9 +33,10 @@
 
 import math
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import NotFoundError
 from app.crud import inventory_movement as inventory_crud
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
@@ -56,8 +57,8 @@ router = APIRouter(prefix="/inventory", tags=["inventory"])
 # ============================================================
 @router.get("/", response_model=InventoryMovementPaginated)
 async def list_movements(
-    page: int = Query(default=1, ge=1),               # mínimo página 1
-    page_size: int = Query(default=10, ge=1, le=100), # entre 1 y 100 registros
+    page: int = Query(default=1, ge=1),  # mínimo página 1
+    page_size: int = Query(default=10, ge=1, le=100),  # entre 1 y 100 registros
     product_id: int | None = None,
     movement_type: str | None = Query(default=None),  # 'ENTRADA'/'SALIDA'/None
     db: AsyncSession = Depends(get_db),
@@ -109,10 +110,7 @@ async def get_movement(
     movement = await inventory_crud.get_movement_by_id(db, movement_id)
 
     if movement is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Movimiento con id '{movement_id}' no encontrado",
-        )
+        raise NotFoundError("Movimiento", movement_id)
 
     return InventoryMovementResponse.model_validate(movement)
 
@@ -120,7 +118,9 @@ async def get_movement(
 # ============================================================
 # POST /api/v1/inventory — Registrar un movimiento
 # ============================================================
-@router.post("/", response_model=InventoryMovementResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/", response_model=InventoryMovementResponse, status_code=status.HTTP_201_CREATED
+)
 async def register_movement(
     data: InventoryMovementCreate,
     db: AsyncSession = Depends(get_db),

@@ -93,12 +93,15 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         verify_password("Accenture2024", "$2b$12$K8HqO3...") → True
         verify_password("contraseña_mal", "$2b$12$K8HqO3...") → False
     """
-    return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
+    return bcrypt.checkpw(
+        plain_password.encode("utf-8"), hashed_password.encode("utf-8")
+    )
 
 
 # ============================================================
 # JWT — Creación y verificación de tokens
 # ============================================================
+
 
 def create_access_token(data: dict[str, Any]) -> str:
     """

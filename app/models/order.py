@@ -102,9 +102,7 @@ class Order(Base):
     # El default lo maneja Python (default=), no PostgreSQL (server_default=),
     # porque es un valor fijo que no depende del momento del INSERT.
     # ----------------------------------------------------------
-    status: Mapped[str] = mapped_column(
-        String(15), nullable=False, default="PENDIENTE"
-    )
+    status: Mapped[str] = mapped_column(String(15), nullable=False, default="PENDIENTE")
 
     # ----------------------------------------------------------
     # Notas opcionales

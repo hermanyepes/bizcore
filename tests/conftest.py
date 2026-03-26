@@ -143,6 +143,7 @@ async def client(db: AsyncSession):
     (admin_user, employee_user), así los endpoints ven los
     usuarios que los fixtures insertaron.
     """
+
     # Reemplazar get_db: siempre devuelve la sesión de prueba
     async def override_get_db():
         yield db  # sin crear una nueva sesión — usamos la del fixture

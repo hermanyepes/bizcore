@@ -22,6 +22,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.common import PaginatedResponse
+
 
 class ProductCreate(BaseModel):
     """
@@ -109,18 +111,6 @@ class ProductResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class ProductPaginated(BaseModel):
-    """
-    Respuesta paginada para el listado de productos.
-
-    ANALOGÍA: como el catálogo de una tienda por páginas.
-    No traes todo el catálogo — traes una página y sabes cuántas hay.
-
-    GET /api/v1/products?page=1&page_size=10
-    """
-
-    items: list[ProductResponse]   # productos de esta página
-    total: int                     # total de productos en la BD
-    page: int                      # página actual
-    page_size: int                 # cuántos productos por página
-    pages: int                     # total de páginas
+# Especialización del schema genérico para productos.
+# Equivale a una clase con items: list[ProductResponse], total, page, page_size, pages.
+ProductPaginated = PaginatedResponse[ProductResponse]

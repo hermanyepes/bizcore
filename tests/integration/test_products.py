@@ -167,9 +167,7 @@ async def test_obtener_producto_sin_token_devuelve_401(client: httpx.AsyncClient
 # ============================================================
 
 
-async def test_crear_producto_como_admin(
-    client: httpx.AsyncClient, admin_token: str
-):
+async def test_crear_producto_como_admin(client: httpx.AsyncClient, admin_token: str):
     """
     POST /products con token de Administrador devuelve 201 y el producto creado.
 

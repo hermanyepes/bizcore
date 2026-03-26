@@ -372,9 +372,7 @@ async def test_logout_token_invalido_devuelve_401(client: AsyncClient):
     assert response.status_code == 401
 
 
-async def test_logout_doble_devuelve_401(
-    client: AsyncClient, admin_refresh_token: str
-):
+async def test_logout_doble_devuelve_401(client: AsyncClient, admin_refresh_token: str):
     """
     Hacer /logout dos veces con el mismo token → segundo intento da 401.
 

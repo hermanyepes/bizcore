@@ -26,8 +26,8 @@
 from datetime import UTC, datetime
 
 import pytest
-from fastapi import HTTPException
 
+from app.core.exceptions import AlreadyExistsError
 from app.core.security import hash_password
 from app.models.product import Product
 from app.models.user import User
@@ -39,6 +39,7 @@ from app.services.validation import check_unique_field
 # Estas funciones crean registros con los mínimos campos obligatorios.
 # Están aquí (y no en conftest.py) porque son específicas de este test.
 # ============================================================
+
 
 def make_product(name: str) -> Product:
     """Crea un Product mínimo para usar en tests de unicidad."""
@@ -90,10 +91,10 @@ async def test_campo_libre_no_lanza_excepcion(db):
 # ============================================================
 
 
-async def test_duplicado_en_create_lanza_409(db):
+async def test_duplicado_en_create_lanza_already_exists(db):
     """
     Si existe un registro con ese valor y no se pasa exclude_id
-    (como en un POST), debe lanzar HTTPException con status 409.
+    (como en un POST), debe lanzar AlreadyExistsError.
 
     Escenario: intentar crear un segundo producto "Café"
     cuando ya hay uno en la BD.
@@ -103,10 +104,12 @@ async def test_duplicado_en_create_lanza_409(db):
     await db.commit()
 
     # Actuar y verificar: crear sin exclude_id → debe chocar
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(AlreadyExistsError) as exc_info:
         await check_unique_field(db, Product, "name", "Café")
 
-    assert exc_info.value.status_code == 409
+    # La excepción lleva el campo y el valor para identificar el conflicto
+    assert exc_info.value.field == "name"
+    assert exc_info.value.value == "Café"
 
 
 # ============================================================
@@ -156,10 +159,11 @@ async def test_update_otro_registro_lanza_409(db):
     await db.refresh(p2)
 
     # Actuar: p2 quiere renombrarse a "Café" → debe chocar con p1
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(AlreadyExistsError) as exc_info:
         await check_unique_field(db, Product, "name", "Café", exclude_id=p2.id)
 
-    assert exc_info.value.status_code == 409
+    assert exc_info.value.field == "name"
+    assert exc_info.value.value == "Café"
 
 
 # ============================================================
@@ -208,7 +212,7 @@ async def test_pk_field_personalizado_lanza_para_otro_usuario(db):
     await db.commit()
 
     # Actuar: u2 intenta usar el email de u1 → conflicto
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(AlreadyExistsError) as exc_info:
         await check_unique_field(
             db,
             User,
@@ -218,7 +222,8 @@ async def test_pk_field_personalizado_lanza_para_otro_usuario(db):
             pk_field="document_id",
         )
 
-    assert exc_info.value.status_code == 409
+    assert exc_info.value.field == "email"
+    assert exc_info.value.value == "juan@empresa.com"
 
 
 # ============================================================
@@ -226,10 +231,10 @@ async def test_pk_field_personalizado_lanza_para_otro_usuario(db):
 # ============================================================
 
 
-async def test_mensaje_409_contiene_campo_y_valor(db):
+async def test_mensaje_error_contiene_campo_y_valor(db):
     """
-    El detail del 409 debe mencionar el nombre del campo y el valor
-    conflictivo para que el cliente sepa exactamente qué está duplicado.
+    El mensaje de AlreadyExistsError debe mencionar el campo y el valor
+    conflictivo para que el manejador pueda construir una respuesta útil.
 
     Esto evita mensajes genéricos como "Error de validación" que
     obligan al cliente a adivinar qué salió mal.
@@ -238,11 +243,12 @@ async def test_mensaje_409_contiene_campo_y_valor(db):
     db.add(make_product("Café"))
     await db.commit()
 
-    # Actuar: provocar el 409
-    with pytest.raises(HTTPException) as exc_info:
+    # Actuar: provocar el AlreadyExistsError
+    with pytest.raises(AlreadyExistsError) as exc_info:
         await check_unique_field(db, Product, "name", "Café")
 
-    # Verificar: el mensaje incluye el campo y el valor
-    detail = exc_info.value.detail
-    assert "name" in detail
-    assert "Café" in detail
+    # Verificar: los atributos y el str() del error incluyen campo y valor
+    assert exc_info.value.field == "name"
+    assert exc_info.value.value == "Café"
+    assert "name" in str(exc_info.value)
+    assert "Café" in str(exc_info.value)

@@ -24,6 +24,7 @@ from app.schemas.user import UserCreate, UserUpdate
 # GET — Consultas de lectura
 # ============================================================
 
+
 async def get_user_by_id(db: AsyncSession, document_id: str) -> User | None:
     """
     Busca un usuario por su número de documento.
@@ -35,9 +36,7 @@ async def get_user_by_id(db: AsyncSession, document_id: str) -> User | None:
     - scalar_one_or_none()  → devuelve el resultado, devuelve None si no hay ninguno
     Usamos la segunda porque un usuario puede no existir y eso es válido.
     """
-    result = await db.execute(
-        select(User).where(User.document_id == document_id)
-    )
+    result = await db.execute(select(User).where(User.document_id == document_id))
     return result.scalar_one_or_none()
 
 
@@ -51,9 +50,7 @@ async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
     Si no existe el email → error. Si existe pero la contraseña
     no coincide → error diferente.
     """
-    result = await db.execute(
-        select(User).where(User.email == email)
-    )
+    result = await db.execute(select(User).where(User.email == email))
     return result.scalar_one_or_none()
 
 
@@ -94,6 +91,7 @@ async def get_users(
 # CREATE — Inserción
 # ============================================================
 
+
 async def create_user(db: AsyncSession, data: UserCreate) -> User:
     """
     Crea un nuevo usuario en la BD.
@@ -130,6 +128,7 @@ async def create_user(db: AsyncSession, data: UserCreate) -> User:
 # ============================================================
 # UPDATE — Actualización parcial
 # ============================================================
+
 
 async def update_user(
     db: AsyncSession,
@@ -179,6 +178,7 @@ async def update_user(
 # ============================================================
 # DELETE — Soft delete
 # ============================================================
+
 
 async def delete_user(db: AsyncSession, document_id: str) -> User | None:
     """
