@@ -38,8 +38,7 @@ if alembic_cfg.config_file_name is not None:
 # Base.metadata acumula la definición de todas las tablas de los
 # modelos que hereden de Base. Si no importas un modelo aquí,
 # Alembic no sabe que esa tabla existe.
-import app.models.audit_log  # noqa: E402, F401
-import app.models.user  # noqa: E402, F401
+import app.models  # noqa: E402, F401 — registra todos los modelos en Base.metadata
 from app.core.config import settings  # noqa: E402
 from app.core.database import Base  # noqa: E402
 

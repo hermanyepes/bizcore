@@ -10,6 +10,7 @@ Uso:
 
 import asyncio
 
+import app.models  # noqa: F401 — registra todos los modelos en Base.metadata
 from app.core.database import Base, engine
 
 
