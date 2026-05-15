@@ -39,7 +39,7 @@ Estos fixtures ya existen — úsalos directamente, nunca los recreees dentro de
 |---|---|---|
 | `client` | `AsyncClient` | Cliente HTTP con BD de prueba inyectada |
 | `db` | `AsyncSession` | Sesión de BD SQLite en memoria |
-| `admin_user` | `User` | Usuario con role="Administrador", email=admin@test.com, password=Admin1234 |
+| `admin_user` | `User` | Usuario con role="Administrador", email=admin@test.com, password=TestAdmin@42 |
 | `employee_user` | `User` | Usuario con role="Empleado", email=empleado@test.com, password=Empleado1234 |
 | `admin_token` | `str` | JWT válido del administrador (Bearer token) |
 | `admin_refresh_token` | `str` | Refresh token válido del administrador |

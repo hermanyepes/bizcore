@@ -182,7 +182,7 @@ async def admin_user(db: AsyncSession):
         full_name="Admin Test",
         email="admin@test.com",
         role="Administrador",
-        password_hash=hash_password("Admin1234"),
+        password_hash=hash_password("TestAdmin@42"),
         is_active=True,
         join_date=datetime.now(UTC),
         created_at=datetime.now(UTC),
@@ -231,7 +231,7 @@ async def admin_token(client: AsyncClient, admin_user: User) -> str:
     """Token JWT válido de un Administrador."""
     response = await client.post(
         "/api/v1/auth/login",
-        json={"email": "admin@test.com", "password": "Admin1234"},
+        json={"email": "admin@test.com", "password": "TestAdmin@42"},
     )
     assert response.status_code == 200, f"Login de admin falló: {response.json()}"
     return response.json()["access_token"]
@@ -242,7 +242,7 @@ async def admin_refresh_token(client: AsyncClient, admin_user: User) -> str:
     """Refresh token válido de un Administrador (para tests de /refresh y /logout)."""
     response = await client.post(
         "/api/v1/auth/login",
-        json={"email": "admin@test.com", "password": "Admin1234"},
+        json={"email": "admin@test.com", "password": "TestAdmin@42"},
     )
     assert response.status_code == 200, f"Login de admin falló: {response.json()}"
     return response.json()["refresh_token"]

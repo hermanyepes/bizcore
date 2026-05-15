@@ -28,14 +28,18 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.api.v1.router import router as api_router
 from app.core.config import settings
 from app.core.database import engine
+from app.dependencies import get_db
 from app.core.exception_handlers import (
     already_exists_handler,
     inactive_resource_handler,
@@ -182,16 +186,19 @@ async def root():
 
 
 @app.get("/health")
-async def health_check():
+async def health_check(db: AsyncSession = Depends(get_db)):
     """
     Health check endpoint.
 
     Los sistemas de monitoreo llaman esto periódicamente.
-    Si responde 200, el servicio está sano.
+    Ejecuta SELECT 1 contra la BD para verificar conectividad real.
+    200 = healthy, 503 = BD no responde.
     """
-    return {
-        "status": "healthy",
-        "database": settings.DATABASE_URL.split("@")[
-            -1
-        ],  # muestra host/db sin credenciales
-    }
+    try:
+        await db.execute(text("SELECT 1"))
+        return {"status": "healthy", "database": "ok"}
+    except Exception:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "database": "unreachable"},
+        )

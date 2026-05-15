@@ -163,7 +163,7 @@ All endpoints require a Bearer token obtained from `POST /api/v1/auth/login`.
 # Login
 curl -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email": "admin@bizcore.com", "password": "Admin1234"}'
+  -d '{"email": "admin@bizcore.com", "password": "<contraseña generada por seed_admin>"}'
 
 # Use the token
 curl http://localhost:8000/api/v1/users/me \

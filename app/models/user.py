@@ -114,3 +114,13 @@ class User(Base):
         onupdate=func.now(),
         nullable=True,
     )
+    # ----------------------------------------------------------
+    # Control de cambio de contraseña obligatorio
+    #
+    # TRUE cuando el admin es creado por seed (contraseña generada
+    # automáticamente) y debe cambiarla en el primer login.
+    # La lógica que fuerza el cambio en login se implementa en Sesión 8.
+    # ----------------------------------------------------------
+    must_change_password: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
