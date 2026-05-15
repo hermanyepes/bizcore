@@ -31,17 +31,18 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Ampliar el CHECK constraint de role a los 4 roles del modelo objetivo."""
-    op.execute("""
-        ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
-        ALTER TABLE users ADD CONSTRAINT users_role_check
-            CHECK (role IN ('Superadmin', 'Administrador', 'Supervisor', 'Empleado'));
-    """)
+    # asyncpg no acepta múltiples sentencias en un solo execute — una llamada por instrucción
+    op.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check")
+    op.execute(
+        "ALTER TABLE users ADD CONSTRAINT users_role_check "
+        "CHECK (role IN ('Superadmin', 'Administrador', 'Supervisor', 'Empleado'))"
+    )
 
 
 def downgrade() -> None:
     """Revertir: volver al CHECK constraint con solo los 2 roles originales."""
-    op.execute("""
-        ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
-        ALTER TABLE users ADD CONSTRAINT users_role_check
-            CHECK (role IN ('Administrador', 'Empleado'));
-    """)
+    op.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check")
+    op.execute(
+        "ALTER TABLE users ADD CONSTRAINT users_role_check "
+        "CHECK (role IN ('Administrador', 'Empleado'))"
+    )
