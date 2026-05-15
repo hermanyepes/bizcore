@@ -288,6 +288,78 @@ async def employee_token(client: AsyncClient, employee_user: User) -> str:
 
 
 @pytest.fixture
+async def superadmin_user(db: AsyncSession):
+    """
+    Usuario Superadmin disponible en la BD de prueba.
+
+    Útil para probar que solo Superadmin puede crear Administradores
+    y modificar usuarios con rol Superadmin.
+    """
+    user = User(
+        document_id="9000000000",
+        document_type="CC",
+        full_name="Superadmin Test",
+        email="superadmin@test.com",
+        role="Superadmin",
+        password_hash=hash_password("Superadmin@42"),
+        is_active=True,
+        join_date=datetime.now(UTC),
+        created_at=datetime.now(UTC),
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@pytest.fixture
+async def supervisor_user(db: AsyncSession):
+    """
+    Usuario Supervisor disponible en la BD de prueba.
+
+    Útil para probar que el Supervisor puede gestionar productos,
+    inventario y proveedores, pero no el módulo de usuarios.
+    """
+    user = User(
+        document_id="3000000003",
+        document_type="CC",
+        full_name="Supervisor Test",
+        email="supervisor@test.com",
+        role="Supervisor",
+        password_hash=hash_password("Supervisor@42"),
+        is_active=True,
+        join_date=datetime.now(UTC),
+        created_at=datetime.now(UTC),
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@pytest.fixture
+async def superadmin_token(client: AsyncClient, superadmin_user: User) -> str:
+    """Token JWT válido de un Superadmin."""
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "superadmin@test.com", "password": "Superadmin@42"},
+    )
+    assert response.status_code == 200, f"Login de superadmin falló: {response.json()}"
+    return response.json()["access_token"]
+
+
+@pytest.fixture
+async def supervisor_token(client: AsyncClient, supervisor_user: User) -> str:
+    """Token JWT válido de un Supervisor."""
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "supervisor@test.com", "password": "Supervisor@42"},
+    )
+    assert response.status_code == 200, f"Login de supervisor falló: {response.json()}"
+    return response.json()["access_token"]
+
+
+@pytest.fixture
 async def supplier(db: AsyncSession):
     """
     Proveedor de prueba disponible en la BD antes de cada test.

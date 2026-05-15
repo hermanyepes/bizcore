@@ -467,21 +467,25 @@ async def test_actualizar_status_pedido_como_admin(
     assert len(data["items"]) == 1
 
 
-async def test_actualizar_pedido_como_empleado_devuelve_403(
+async def test_actualizar_pedido_como_empleado(
     client: AsyncClient,
     employee_token: str,
     order: Order,
 ) -> None:
     """
-    Un Empleado no puede cambiar el status de un pedido.
-    Solo el Administrador puede aprobar o completar pedidos.
+    Un Empleado puede llamar al endpoint PUT /orders/{id} — endpoint-level permite
+    cualquier usuario autenticado (require_employee).
+
+    Las restricciones de row-level (solo puede actualizar sus propias órdenes
+    en estado PENDIENTE) se implementarán en el servicio en la Sesión 5
+    del roadmap. Por ahora el endpoint devuelve 200.
     """
     response = await client.put(
         f"/api/v1/orders/{order.id}",
         json={"status": "COMPLETADO"},
         headers={"Authorization": f"Bearer {employee_token}"},
     )
-    assert response.status_code == 403
+    assert response.status_code == 200
 
 
 async def test_actualizar_pedido_inexistente_devuelve_404(
@@ -531,17 +535,24 @@ async def test_cancelar_pedido_como_admin(
     assert get_response.json()["status"] == "CANCELADO"
 
 
-async def test_cancelar_pedido_como_empleado_devuelve_403(
+async def test_cancelar_pedido_como_empleado(
     client: AsyncClient,
     employee_token: str,
     order: Order,
 ) -> None:
-    """Un Empleado no puede cancelar pedidos. Solo el Administrador."""
+    """
+    Un Empleado puede llamar al endpoint DELETE /orders/{id} — endpoint-level permite
+    cualquier usuario autenticado (require_employee).
+
+    Las restricciones de row-level (solo puede cancelar sus propias órdenes)
+    se implementarán en el servicio en la Sesión 5 del roadmap.
+    Por ahora el endpoint devuelve 200.
+    """
     response = await client.delete(
         f"/api/v1/orders/{order.id}",
         headers={"Authorization": f"Bearer {employee_token}"},
     )
-    assert response.status_code == 403
+    assert response.status_code == 200
 
 
 async def test_cancelar_pedido_inexistente_devuelve_404(

@@ -484,7 +484,9 @@ async def test_create_user_returns_created_resource(
     client: AsyncClient,
     admin_token: str,
 ):
-    """POST /users devuelve el usuario creado con all fields."""
+    """POST /users devuelve el usuario creado con all fields.
+    Admin puede crear Empleados y Supervisores (HU-018: no Admin ni Superadmin).
+    """
     user_data = {
         "document_id": "5555555555",
         "document_type": "CC",
@@ -492,7 +494,7 @@ async def test_create_user_returns_created_resource(
         "email": "test@example.com",
         "phone": "3001111111",
         "city": "Medellín",
-        "role": "Administrador",
+        "role": "Empleado",
         "password": "TestPass123",
     }
 
@@ -508,7 +510,7 @@ async def test_create_user_returns_created_resource(
     assert data["full_name"] == "Test User"
     assert data["phone"] == "3001111111"
     assert data["city"] == "Medellín"
-    assert data["role"] == "Administrador"
+    assert data["role"] == "Empleado"
     assert data["is_active"] is True
 
 
@@ -650,8 +652,10 @@ async def test_update_user_can_change_role(
     admin_token: str,
     employee_user: User,
 ):
-    """PUT /users/{document_id} puede cambiar el role del usuario."""
-    update_data = {"role": "Administrador"}
+    """PUT /users/{document_id} puede cambiar el role del usuario.
+    Admin puede promover a Supervisor (HU-018: no puede promover a Admin ni Superadmin).
+    """
+    update_data = {"role": "Supervisor"}
 
     response = await client.put(
         f"/api/v1/users/{employee_user.document_id}",
@@ -661,7 +665,7 @@ async def test_update_user_can_change_role(
 
     assert response.status_code == 200
     data = response.json()
-    assert data["role"] == "Administrador"
+    assert data["role"] == "Supervisor"
 
 
 @pytest.mark.asyncio

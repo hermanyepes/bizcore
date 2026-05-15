@@ -79,20 +79,20 @@ async def test_listar_proveedores_como_admin(
     assert any(s["name"] == supplier.name for s in body["items"])
 
 
-async def test_listar_proveedores_como_empleado(
+async def test_listar_proveedores_como_empleado_devuelve_403(
     client: httpx.AsyncClient, employee_token: str, supplier: Supplier
 ):
     """
-    GET /suppliers con token de Empleado también devuelve 200.
+    GET /suppliers con token de Empleado devuelve 403.
 
-    Los empleados pueden consultar la libreta de proveedores
-    para coordinar pedidos. Crear, editar y eliminar sí requiere Admin.
+    Según la matriz de permisos, el módulo de proveedores requiere
+    rol Supervisor o superior. Los Empleados no tienen acceso.
     """
     response = await client.get(
         "/api/v1/suppliers/",
         headers={"Authorization": f"Bearer {employee_token}"},
     )
-    assert response.status_code == 200
+    assert response.status_code == 403
 
 
 async def test_listar_proveedores_sin_token_devuelve_401(client: httpx.AsyncClient):
@@ -130,15 +130,20 @@ async def test_obtener_proveedor_por_id(
     assert "created_at" in body
 
 
-async def test_obtener_proveedor_como_empleado(
+async def test_obtener_proveedor_como_empleado_devuelve_403(
     client: httpx.AsyncClient, employee_token: str, supplier: Supplier
 ):
-    """Un empleado también puede ver los detalles de un proveedor específico."""
+    """
+    GET /suppliers/{id} con token de Empleado devuelve 403.
+
+    Según la matriz de permisos, el módulo de proveedores requiere
+    rol Supervisor o superior. Los Empleados no tienen acceso.
+    """
     response = await client.get(
         f"/api/v1/suppliers/{supplier.id}",
         headers={"Authorization": f"Bearer {employee_token}"},
     )
-    assert response.status_code == 200
+    assert response.status_code == 403
 
 
 async def test_obtener_proveedor_inexistente_devuelve_404(

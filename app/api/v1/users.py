@@ -15,8 +15,8 @@
 #
 # FLUJO DE UNA REQUEST TÍPICA:
 #   1. FastAPI recibe GET /api/v1/users/1000000001
-#   2. Ejecuta las dependencias: get_db() → get_current_user()
-#   3. get_current_user() verifica el JWT → si falla: 401
+#   2. Ejecuta las dependencias: get_db() → require_admin()
+#   3. require_admin() verifica el JWT y el rol → si falla: 401 o 403
 #   4. Llama al endpoint con db + current_user ya resueltos
 #   5. El endpoint delega en user_service → user_service llama al crud
 #   6. FastAPI serializa la respuesta con response_model
@@ -26,6 +26,8 @@
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import UserRole
+from app.core.exceptions import PermissionDeniedError
 from app.dependencies import get_current_user, get_db, require_admin
 from app.models.user import User
 from app.schemas.user import UserCreate, UserPaginated, UserResponse, UserUpdate
@@ -45,9 +47,9 @@ async def list_users(
     page: int = Query(default=1, ge=1),  # mínimo página 1
     page_size: int = Query(default=10, ge=1, le=100),  # entre 1 y 100 registros
     is_active: bool | None = Query(default=None),  # True/False/None (todos)
-    role: str | None = Query(default=None),  # 'Administrador'/'Empleado'/None
+    role: str | None = Query(default=None),  # filtro por rol
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),  # cualquier usuario autenticado
+    current_user: User = Depends(require_admin),  # solo Admin+ puede listar usuarios
 ) -> UserPaginated:
     """
     Lista usuarios con paginación y filtros opcionales.
@@ -55,6 +57,7 @@ async def list_users(
     GET /api/v1/users?page=1&page_size=10
     GET /api/v1/users?is_active=true&role=Empleado
     GET /api/v1/users?is_active=false   ← ver usuarios desactivados
+    Requiere: JWT con rol Administrador o Superadmin
 
     Filtros opcionales — si no se envían, devuelve todos los registros.
     Se pueden combinar: ?is_active=true&role=Administrador
@@ -95,15 +98,15 @@ async def get_me(
 async def get_user(
     document_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),  # solo Admin+ puede ver otros usuarios
 ) -> UserResponse:
     """
     Devuelve los datos de un usuario específico.
 
     GET /api/v1/users/1000000001
+    Requiere: JWT con rol Administrador o Superadmin
 
-    {document_id} en el path es un "path parameter".
-    FastAPI lo extrae de la URL y lo pasa como argumento a la función.
+    Para ver el propio perfil sin ser Admin, usar GET /users/me.
 
     ¿Por qué 404 y no 400 si no existe?
     400 Bad Request → el cliente envió datos malformados
@@ -115,32 +118,44 @@ async def get_user(
 
 
 # ============================================================
-# POST /api/v1/users — Crear usuario (solo Administrador)
+# POST /api/v1/users — Crear usuario (Admin o Superadmin)
 # ============================================================
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_user(
     data: UserCreate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),  # solo Administrador puede crear
+    admin: User = Depends(require_admin),  # Admin o Superadmin puede crear usuarios
 ) -> UserResponse:
     """
     Crea un nuevo usuario en el sistema.
 
     POST /api/v1/users
     Body: UserCreate (JSON)
-    Requiere: JWT con rol Administrador
+    Requiere: JWT con rol Administrador o Superadmin
+
+    HU-018: Admin NO puede crear usuarios con rol Administrador ni Superadmin.
+    Solo Superadmin puede crear esos niveles.
 
     ¿Por qué 201 y no 200?
     200 OK      → éxito, el recurso ya existía
     201 Created → éxito, se creó un nuevo recurso
     POST que crea algo siempre devuelve 201.
     """
+    # HU-018: Admin solo puede crear Empleados y Supervisores
+    if admin.role == UserRole.ADMIN and data.role in (
+        UserRole.ADMIN,
+        UserRole.SUPERADMIN,
+    ):
+        raise PermissionDeniedError(
+            "Solo Superadmin puede crear usuarios con rol Administrador o Superadmin."
+        )
+
     user = await user_service.create(db, data)
     return UserResponse.model_validate(user)
 
 
 # ============================================================
-# PUT /api/v1/users/{document_id} — Actualizar usuario (solo Administrador)
+# PUT /api/v1/users/{document_id} — Actualizar usuario (Admin o Superadmin)
 # ============================================================
 @router.put("/{document_id}", response_model=UserResponse)
 async def update_user(
@@ -154,20 +169,31 @@ async def update_user(
 
     PUT /api/v1/users/1000000001
     Body: UserUpdate (solo los campos que quieres cambiar)
-    Requiere: JWT con rol Administrador
+    Requiere: JWT con rol Administrador o Superadmin
 
-    ¿Por qué PUT y no PATCH?
-    Técnicamente estamos haciendo PATCH (gracias a exclude_unset en crud):
-    el cliente puede enviar solo {"phone": "3001234567"} y solo eso cambia.
-    En APIs simples se usa PUT para ambos casos — PATCH es más correcto
-    semánticamente pero menos común en proyectos pequeños.
+    HU-018 — restricciones para el Administrador:
+    - No puede modificar usuarios con rol Superadmin.
+    - No puede cambiar el rol de alguien a Administrador ni Superadmin.
     """
+    # HU-018: pre-fetch para verificar el rol del usuario objetivo
+    target = await user_service.get(db, document_id)
+
+    if admin.role == UserRole.ADMIN:
+        if target.role == UserRole.SUPERADMIN:
+            raise PermissionDeniedError(
+                "Administrador no puede modificar usuarios con rol Superadmin."
+            )
+        if data.role is not None and data.role in (UserRole.ADMIN, UserRole.SUPERADMIN):
+            raise PermissionDeniedError(
+                "Administrador no puede promover usuarios a rol Administrador ni Superadmin."
+            )
+
     user = await user_service.update(db, document_id, data)
     return UserResponse.model_validate(user)
 
 
 # ============================================================
-# DELETE /api/v1/users/{document_id} — Desactivar usuario (solo Administrador)
+# DELETE /api/v1/users/{document_id} — Desactivar usuario (Admin o Superadmin)
 # ============================================================
 @router.delete("/{document_id}", response_model=UserResponse)
 async def delete_user(
@@ -179,16 +205,19 @@ async def delete_user(
     Desactiva un usuario (soft delete — no borra el registro de la BD).
 
     DELETE /api/v1/users/1000000001
-    Requiere: JWT con rol Administrador
+    Requiere: JWT con rol Administrador o Superadmin
+
+    HU-018: Admin no puede desactivar usuarios Superadmin.
 
     La respuesta devuelve el usuario con is_active=False,
     confirmando visualmente que fue desactivado.
-
-    ¿Por qué devolver el usuario y no 204 No Content?
-    204 no tiene cuerpo — el cliente no sabe qué fue desactivado.
-    Con el objeto devuelto, el frontend puede mostrar:
-    "Usuario Juan Pérez (1000000001) fue desactivado."
-    Eso es mejor UX en una aplicación de gestión.
     """
+    # HU-018: Admin no puede desactivar Superadmins
+    target = await user_service.get(db, document_id)
+    if admin.role == UserRole.ADMIN and target.role == UserRole.SUPERADMIN:
+        raise PermissionDeniedError(
+            "Administrador no puede desactivar usuarios con rol Superadmin."
+        )
+
     user = await user_service.delete(db, document_id)
     return UserResponse.model_validate(user)

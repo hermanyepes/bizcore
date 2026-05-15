@@ -31,28 +31,30 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.router import router as api_router
 from app.core.config import settings
 from app.core.database import engine
-from app.dependencies import get_db
 from app.core.exception_handlers import (
     already_exists_handler,
     inactive_resource_handler,
     insufficient_stock_handler,
     not_found_handler,
+    permission_denied_handler,
 )
 from app.core.exceptions import (
     AlreadyExistsError,
     InactiveResourceError,
     InsufficientStockError,
     NotFoundError,
+    PermissionDeniedError,
 )
 from app.core.limiter import limiter
+from app.dependencies import get_db
 
 # True cuando ENVIRONMENT="production" en .env (o variable de entorno del sistema).
 # Se define aquí para que lifespan y FastAPI() puedan usarlo sin dependencia implícita.
@@ -122,6 +124,7 @@ app.add_exception_handler(NotFoundError, not_found_handler)
 app.add_exception_handler(AlreadyExistsError, already_exists_handler)
 app.add_exception_handler(InactiveResourceError, inactive_resource_handler)
 app.add_exception_handler(InsufficientStockError, insufficient_stock_handler)
+app.add_exception_handler(PermissionDeniedError, permission_denied_handler)
 
 
 # ============================================================

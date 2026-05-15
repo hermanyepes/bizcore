@@ -19,10 +19,10 @@
 # ============================================================
 
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from app.constants import UserRole
 from app.schemas.common import PaginatedResponse
 
 
@@ -31,12 +31,13 @@ class UserCreate(BaseModel):
     Datos necesarios para crear un nuevo usuario.
 
     POST /api/v1/users
-    Solo el Administrador puede crear usuarios (validado en el endpoint).
+    Solo Administrador o Superadmin puede crear usuarios (validado en el endpoint).
 
-    ¿Por qué `Literal["Administrador", "Empleado"]`?
-    Pydantic rechaza automáticamente cualquier valor que no sea
-    exactamente uno de esos dos strings. Sin esto, alguien podría
-    enviar role="Superusuario" y pasaría sin error hasta llegar a la BD.
+    ¿Por qué UserRole y no Literal?
+    UserRole es un StrEnum con los 4 roles del sistema. Pydantic rechaza
+    automáticamente cualquier valor fuera del enum. Usar UserRole en vez
+    de Literal centraliza la definición en app.constants — si se añade
+    un rol nuevo, solo hay que tocarlo en un lugar.
     """
 
     document_id: str = Field(max_length=20)
@@ -45,7 +46,7 @@ class UserCreate(BaseModel):
     phone: str | None = Field(default=None, max_length=15)
     email: EmailStr
     city: str | None = Field(default=None, max_length=50)
-    role: Literal["Administrador", "Empleado"]
+    role: UserRole
     # El cliente envía la contraseña en texto plano.
     # El endpoint la hashea antes de guardar — nunca toca la BD sin hashear.
     password: str = Field(min_length=8)
@@ -70,7 +71,7 @@ class UserUpdate(BaseModel):
     full_name: str | None = Field(default=None, max_length=80)
     phone: str | None = Field(default=None, max_length=15)
     city: str | None = Field(default=None, max_length=50)
-    role: Literal["Administrador", "Empleado"] | None = None
+    role: UserRole | None = None
     password: str | None = Field(default=None, min_length=8)
     is_active: bool | None = None
 

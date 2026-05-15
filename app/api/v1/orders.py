@@ -23,12 +23,15 @@
 #   DELETE /orders/{id} → Mesero va directo al bodeguero (crud)
 #                         Solo cambia status a "CANCELADO".
 #
-# PERMISOS:
-#   Crear pedidos       → cualquier usuario autenticado
-#                         (los empleados también gestionan compras)
-#   Ver pedidos         → cualquier usuario autenticado
-#   Cambiar status      → solo Administrador
-#   Cancelar            → solo Administrador
+# PERMISOS (ver docs/roles/matriz-permisos.md sección 2.5):
+#   Todos los endpoints → require_employee (cualquier usuario autenticado)
+#
+# NOTA sobre row-level security:
+#   La matriz define restricciones más finas por rol (el Empleado
+#   solo ve sus propias órdenes, solo puede cancelar las suyas, etc.)
+#   Esas restricciones se implementan en el SERVICE en la Sesión 5
+#   del roadmap. Por ahora el endpoint-level permite acceso a
+#   cualquier usuario autenticado.
 #
 # ============================================================
 
@@ -39,7 +42,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
 from app.crud import order as order_crud
-from app.dependencies import get_current_user, get_db, require_admin
+from app.dependencies import get_db, require_employee
 from app.models.user import User
 from app.schemas.order import (
     OrderCreate,
@@ -64,7 +67,7 @@ async def list_orders(
     supplier_id: int | None = None,
     status: str | None = Query(default=None),  # 'PENDIENTE'/'RECIBIDO'/'CANCELADO'
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_employee),  # cualquier usuario autenticado
 ) -> OrderPaginated:
     """
     Lista pedidos de compra con paginación y filtros opcionales.
@@ -72,6 +75,7 @@ async def list_orders(
     GET /api/v1/orders?page=1&page_size=10
     GET /api/v1/orders?status=PENDIENTE
     GET /api/v1/orders?supplier_id=3&status=RECIBIDO
+    Requiere: JWT válido (cualquier rol)
     """
     skip = (page - 1) * page_size
 
@@ -101,12 +105,13 @@ async def list_orders(
 async def get_order(
     order_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_employee),  # cualquier usuario autenticado
 ) -> OrderResponse:
     """
     Devuelve los datos completos de un pedido, incluyendo todos sus ítems.
 
     GET /api/v1/orders/1
+    Requiere: JWT válido (cualquier rol)
 
     La respuesta incluye:
     - Encabezado del pedido (proveedor, status, notas, fecha)
@@ -130,7 +135,7 @@ async def get_order(
 async def create_order(
     data: OrderCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_employee),  # cualquier usuario autenticado
 ) -> OrderResponse:
     """
     Crea un pedido de compra con todos sus ítems.
@@ -162,11 +167,6 @@ async def create_order(
       404 → proveedor o producto no existe
       400 → proveedor inactivo, producto inactivo, o stock insuficiente
 
-    ¿Por qué llamamos al servicio y no al CRUD directamente?
-    Crear un pedido coordina múltiples tablas, calcula precios y
-    debe ocurrir como transacción atómica. Eso es lógica de negocio —
-    responsabilidad del servicio, no del endpoint.
-
     ¿Cómo llega `created_by_id` al servicio?
     El endpoint extrae `current_user.document_id` del JWT.
     Nunca viene del body — el cliente no elige quién firma el pedido.
@@ -181,31 +181,25 @@ async def create_order(
 
 
 # ============================================================
-# PUT /api/v1/orders/{order_id} — Actualizar pedido (solo Administrador)
+# PUT /api/v1/orders/{order_id} — Actualizar pedido
 # ============================================================
 @router.put("/{order_id}", response_model=OrderResponse)
 async def update_order(
     order_id: int,
     data: OrderUpdate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    current_user: User = Depends(require_employee),  # cualquier autenticado — row-level en Sesión 5
 ) -> OrderResponse:
     """
     Actualiza el status y/o las notas de un pedido.
 
     PUT /api/v1/orders/1
     Body: OrderUpdate (JSON)
-    Requiere: JWT con rol Administrador
+    Requiere: JWT válido (cualquier rol)
 
-    Ejemplos de uso:
-    - Completar un pedido:   {"status": "COMPLETADO"}
-    - Agregar una nota:      {"notes": "Entregado el 2026-03-10"}
-    - Ambas a la vez:        {"status": "COMPLETADO", "notes": "Entregado OK"}
-
-    ¿Por qué solo el Administrador puede cambiar el status?
-    Cambiar un pedido a COMPLETADO o CANCELADO es una decisión
-    administrativa — confirma que se recibió la mercancía o que
-    se revocó el pedido. No es una acción de cualquier empleado.
+    Nota: las restricciones de row-level (el Empleado solo puede
+    actualizar sus propias órdenes en estado PENDIENTE) se implementan
+    en el servicio en la Sesión 5 del roadmap.
 
     ¿Por qué no se pueden actualizar los ítems?
     Los ítems son históricos. El precio y la cantidad quedan congelados
@@ -223,32 +217,29 @@ async def update_order(
 
 
 # ============================================================
-# DELETE /api/v1/orders/{order_id} — Cancelar pedido (solo Administrador)
+# DELETE /api/v1/orders/{order_id} — Cancelar pedido
 # ============================================================
 @router.delete("/{order_id}", response_model=OrderResponse)
 async def cancel_order(
     order_id: int,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    current_user: User = Depends(require_employee),  # cualquier autenticado — row-level en Sesión 5
 ) -> OrderResponse:
     """
     Cancela un pedido cambiando su status a "CANCELADO".
 
     DELETE /api/v1/orders/1
-    Requiere: JWT con rol Administrador
+    Requiere: JWT válido (cualquier rol)
+
+    Nota: las restricciones de row-level (el Empleado solo puede
+    cancelar sus propias órdenes) se implementan en el servicio
+    en la Sesión 5 del roadmap.
 
     ¿Por qué no borramos la fila de la BD?
     Los pedidos de compra son registros auditables. Un pedido
     cancelado sigue siendo información de negocio valiosa:
     ¿cuántos pedidos se cancelaron? ¿con qué proveedor?
     El historial debe conservarse intacto.
-
-    ¿Se restaura el stock al cancelar?
-    En esta versión, no. Si un pedido se cancela, el administrador
-    debe registrar manualmente una ENTRADA de inventario para
-    restablecer el stock de los productos afectados. Esta es una
-    decisión de alcance — en sistemas más complejos, la cancelación
-    revertiría el stock automáticamente.
 
     La respuesta devuelve el pedido con status="CANCELADO",
     confirmando visualmente que fue cancelado.

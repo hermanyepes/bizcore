@@ -110,3 +110,20 @@ class InsufficientStockError(BizCoreError):
             f"Stock insuficiente para '{product_name}'. "
             f"Disponible: {available}, solicitado: {requested}"
         )
+
+
+class PermissionDeniedError(BizCoreError):
+    """
+    Se lanza cuando un usuario autenticado intenta una acción que su rol no permite.
+
+    Distinto de 401 Unauthorized: el usuario SÍ está identificado.
+    El problema es que su rol no alcanza para la operación solicitada.
+
+    Ejemplos:
+        raise PermissionDeniedError("Solo Superadmin puede crear Administradores.")
+        raise PermissionDeniedError("Admin no puede modificar usuarios Superadmin.")
+    """
+
+    def __init__(self, detail: str = "No tienes permiso para esta operación.") -> None:
+        self.detail = detail
+        super().__init__(detail)

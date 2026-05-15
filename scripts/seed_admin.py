@@ -45,7 +45,7 @@ async def create_admin() -> None:
                 document_type="CC",
                 full_name="Administrador BizCore",
                 email="admin@bizcore.com",
-                role="Administrador",
+                role="Superadmin",
                 password_hash=hash_password(password),
                 is_active=True,
                 must_change_password=True,
@@ -56,7 +56,7 @@ async def create_admin() -> None:
             await session.commit()
             print("=" * 60)
             print("✓ Usuario administrador creado exitosamente.")
-            print(f"  Email:    admin@bizcore.com")
+            print("  Email:    admin@bizcore.com")
             print(f"  Password: {password}")
             print("  CÓPIALA AHORA — no se mostrará otra vez.")
             print("=" * 60)

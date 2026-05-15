@@ -35,7 +35,9 @@ from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import UserRole
 from app.core.database import AsyncSessionLocal
+from app.core.exceptions import PermissionDeniedError
 from app.core.security import decode_access_token
 from app.models.user import User
 
@@ -127,28 +129,48 @@ async def get_current_user(
 
 
 # ============================================================
-# require_admin — Verificar que el usuario sea Administrador
+# require_roles — Factory de dependencies por rol
 # ============================================================
-def require_admin(current_user: User = Depends(get_current_user)) -> User:
+def require_roles(*allowed_roles: UserRole):
     """
-    Dependencia adicional para endpoints que requieren rol Administrador.
+    Factory que devuelve una dependency que permite solo los roles dados.
 
-    Uso:
-        @router.delete("/{document_id}")
-        async def delete_user(admin: User = Depends(require_admin)):
-            ...
+    Uso directo:
+        @router.post("/users", dependencies=[Depends(require_roles(UserRole.SUPERADMIN, UserRole.ADMIN))])
 
-    Si el usuario es Empleado → 403 Forbidden.
-    Si es Administrador → devuelve el usuario (igual que get_current_user).
+    Uso via alias:
+        admin: User = Depends(require_admin)  # equivalente a require_roles(SUPERADMIN, ADMIN)
 
-    ¿Por qué una función separada y no validar el rol dentro de cada endpoint?
-    Porque así la lógica de autorización está en un solo lugar.
-    Si cambia la regla ("ahora los Empleados también pueden eliminar"),
-    cambias una línea aquí y aplica a todos los endpoints automáticamente.
+    Si el rol del usuario no está en allowed_roles → PermissionDeniedError (403).
+    Si el token es inválido → 401 (lo maneja get_current_user).
     """
-    if current_user.role != "Administrador":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Se requiere rol Administrador para esta operación",
-        )
-    return current_user
+
+    async def _checker(current_user: User = Depends(get_current_user)) -> User:
+        if current_user.role not in allowed_roles:
+            raise PermissionDeniedError(
+                f"Tu rol ({current_user.role}) no tiene permiso para esta operación."
+            )
+        return current_user
+
+    return _checker
+
+
+# ============================================================
+# Aliases convenientes — jerarquía de roles (cada uno incluye los de arriba)
+# ============================================================
+
+# Solo el Superadmin — para operaciones exclusivas del administrador del sistema
+require_superadmin = require_roles(UserRole.SUPERADMIN)
+
+# Superadmin + Administrador — para gestión de usuarios y operaciones financieras
+require_admin = require_roles(UserRole.SUPERADMIN, UserRole.ADMIN)
+
+# Superadmin + Administrador + Supervisor — para operativa de productos, inventario y proveedores
+require_supervisor = require_roles(
+    UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.SUPERVISOR
+)
+
+# Todos los roles autenticados — para operaciones generales (órdenes, perfil propio)
+require_employee = require_roles(
+    UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.EMPLOYEE
+)
