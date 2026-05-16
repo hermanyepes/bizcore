@@ -194,6 +194,26 @@ async def admin_user(db: AsyncSession):
 
 
 @pytest.fixture
+async def second_admin_user(db: AsyncSession):
+    """Segundo usuario Administrador para probar restricciones entre pares."""
+    user = User(
+        document_id="1000000002",
+        document_type="CC",
+        full_name="Admin Test 2",
+        email="admin2@test.com",
+        role="Administrador",
+        password_hash=hash_password("TestAdmin2@42"),
+        is_active=True,
+        join_date=datetime.now(UTC),
+        created_at=datetime.now(UTC),
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@pytest.fixture
 async def employee_user(db: AsyncSession):
     """
     Usuario Empleado disponible en la BD de prueba.

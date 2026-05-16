@@ -966,6 +966,106 @@ async def test_cannot_hard_delete_user_with_orders(
 
 
 @pytest.mark.asyncio
+async def test_admin_cannot_edit_peer_admin(
+    client: AsyncClient,
+    admin_token: str,
+    second_admin_user: User,
+):
+    """PUT /users/{document_id} como Admin sobre otro Admin → 403 (jerarquía estricta)."""
+    response = await client.put(
+        f"/api/v1/users/{second_admin_user.document_id}",
+        json={"full_name": "Hackeado"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 403
+    assert "Administrador" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_admin_can_edit_themselves(
+    client: AsyncClient,
+    admin_token: str,
+    admin_user: User,
+):
+    """PUT /users/{document_id} como Admin sobre sí mismo → 200 (autogestión permitida)."""
+    response = await client.put(
+        f"/api/v1/users/{admin_user.document_id}",
+        json={"phone": "3001234567"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["phone"] == "3001234567"
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_deactivate_peer_admin(
+    client: AsyncClient,
+    admin_token: str,
+    second_admin_user: User,
+):
+    """DELETE /users/{document_id} como Admin sobre otro Admin → 403 (jerarquía estricta)."""
+    response = await client.delete(
+        f"/api/v1/users/{second_admin_user.document_id}",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 403
+    assert "igual o superior" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_deactivate_themselves(
+    client: AsyncClient,
+    admin_token: str,
+    admin_user: User,
+):
+    """DELETE /users/{document_id} como Admin sobre su propia cuenta → 403."""
+    response = await client.delete(
+        f"/api/v1/users/{admin_user.document_id}",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 403
+    assert "propia cuenta" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_change_own_role(
+    client: AsyncClient,
+    admin_token: str,
+    admin_user: User,
+):
+    """PUT /users/{document_id} — Admin no puede cambiar su propio rol (Separation of Duties)."""
+    response = await client.put(
+        f"/api/v1/users/{admin_user.document_id}",
+        json={"role": "Supervisor"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 403
+    assert "rol" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_superadmin_can_edit_any_admin(
+    client: AsyncClient,
+    superadmin_token: str,
+    admin_user: User,
+):
+    """PUT /users/{document_id} como Superadmin sobre un Admin → 200 (sin restricciones)."""
+    response = await client.put(
+        f"/api/v1/users/{admin_user.document_id}",
+        json={"city": "Cali"},
+        headers={"Authorization": f"Bearer {superadmin_token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["city"] == "Cali"
+
+
+@pytest.mark.asyncio
 async def test_user_timestamps_are_present(
     client: AsyncClient,
     admin_token: str,

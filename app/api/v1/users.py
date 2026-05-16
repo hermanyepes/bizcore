@@ -187,10 +187,18 @@ async def update_user(
     # HU-018: pre-fetch para verificar el rol del usuario objetivo
     target = await user_service.get(db, document_id)
 
+    # Nadie puede cambiar su propio rol — Separation of Duties
+    if target.document_id == admin.document_id and data.role is not None and data.role != target.role:
+        raise PermissionDeniedError("No puedes cambiar tu propio rol.")
+
     if admin.role == UserRole.ADMIN:
         if target.role == UserRole.SUPERADMIN:
             raise PermissionDeniedError(
                 "Administrador no puede modificar usuarios con rol Superadmin."
+            )
+        if target.role == UserRole.ADMIN and target.document_id != admin.document_id:
+            raise PermissionDeniedError(
+                "Administrador no puede modificar otros usuarios con rol Administrador."
             )
         if data.role is not None and data.role in (UserRole.ADMIN, UserRole.SUPERADMIN):
             raise PermissionDeniedError(
@@ -257,11 +265,18 @@ async def delete_user(
     La respuesta devuelve el usuario con is_active=False,
     confirmando visualmente que fue desactivado.
     """
-    # HU-018: Admin no puede desactivar Superadmins
     target = await user_service.get(db, document_id)
-    if admin.role == UserRole.ADMIN and target.role == UserRole.SUPERADMIN:
+
+    # Nadie puede desactivar su propia cuenta vía este endpoint
+    if admin.document_id == document_id:
         raise PermissionDeniedError(
-            "Administrador no puede desactivar usuarios con rol Superadmin."
+            "No puedes desactivar tu propia cuenta. Contacta a un Superadmin."
+        )
+
+    # Admin no puede desactivar a Superadmin ni a otro Admin
+    if admin.role == UserRole.ADMIN and target.role in (UserRole.SUPERADMIN, UserRole.ADMIN):
+        raise PermissionDeniedError(
+            "Administrador no puede desactivar usuarios con rol igual o superior."
         )
 
     user = await user_service.delete(db, document_id)
