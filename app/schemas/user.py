@@ -76,6 +76,16 @@ class UserUpdate(BaseModel):
     is_active: bool | None = None
 
 
+class UserUpdateSuperadmin(UserUpdate):
+    """
+    Extensión de UserUpdate disponible solo para Superadmin.
+    Añade la corrección del email, que el schema base no permite
+    para evitar que Administradores cambien correos de otros usuarios.
+    """
+
+    email: EmailStr | None = None
+
+
 class UserResponse(BaseModel):
     """
     Datos del usuario que la API devuelve al cliente.

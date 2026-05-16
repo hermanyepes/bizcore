@@ -1,8 +1,11 @@
+from datetime import UTC, datetime
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.security import hash_password
 from app.models.user import User
 
 
@@ -872,6 +875,94 @@ async def test_update_user_response_excludes_password(
     data = response.json()
     assert "password" not in data
     assert "password_hash" not in data
+
+
+@pytest.mark.asyncio
+async def test_superadmin_can_edit_email(
+    client: AsyncClient,
+    superadmin_token: str,
+    employee_user: User,
+):
+    """PUT /users/{document_id} como Superadmin puede cambiar el email → 200 con email nuevo."""
+    response = await client.put(
+        f"/api/v1/users/{employee_user.document_id}",
+        json={"email": "nuevo@test.com"},
+        headers={"Authorization": f"Bearer {superadmin_token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["email"] == "nuevo@test.com"
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_edit_email(
+    client: AsyncClient,
+    admin_token: str,
+    employee_user: User,
+):
+    """PUT /users/{document_id} como Admin: campo email ignorado, el email no cambia."""
+    original_email = employee_user.email
+
+    response = await client.put(
+        f"/api/v1/users/{employee_user.document_id}",
+        json={"email": "hackeado@test.com", "full_name": "Nombre Actualizado"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["email"] == original_email
+    assert data["full_name"] == "Nombre Actualizado"
+
+
+@pytest.mark.asyncio
+async def test_superadmin_can_hard_delete_inactive_user_without_activity(
+    client: AsyncClient,
+    superadmin_token: str,
+    db: AsyncSession,
+):
+    """DELETE /users/{document_id}/permanent borra físicamente usuario inactivo sin actividad → 200."""
+    target = User(
+        document_id="7777777777",
+        document_type="CC",
+        full_name="Para Borrar",
+        email="todelete@test.com",
+        role="Empleado",
+        password_hash=hash_password("Pass1234"),
+        is_active=False,
+        join_date=datetime.now(UTC),
+        created_at=datetime.now(UTC),
+    )
+    db.add(target)
+    await db.commit()
+    await db.refresh(target)
+
+    response = await client.delete(
+        f"/api/v1/users/{target.document_id}/permanent",
+        headers={"Authorization": f"Bearer {superadmin_token}"},
+    )
+
+    assert response.status_code == 200
+
+    result = await db.execute(select(User).where(User.document_id == "7777777777"))
+    assert result.scalar_one_or_none() is None
+
+
+@pytest.mark.asyncio
+async def test_cannot_hard_delete_user_with_orders(
+    client: AsyncClient,
+    superadmin_token: str,
+    admin_user: User,
+    order,
+):
+    """DELETE /users/{document_id}/permanent con órdenes asociadas → 403 con mensaje claro."""
+    response = await client.delete(
+        f"/api/v1/users/{admin_user.document_id}/permanent",
+        headers={"Authorization": f"Bearer {superadmin_token}"},
+    )
+
+    assert response.status_code == 403
+    assert "actividad registrada" in response.json()["detail"]
 
 
 @pytest.mark.asyncio

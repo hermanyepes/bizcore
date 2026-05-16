@@ -202,3 +202,21 @@ async def delete_user(db: AsyncSession, document_id: str) -> User | None:
     await db.commit()
     await db.refresh(user)
     return user
+
+
+async def hard_delete_user(db: AsyncSession, document_id: str) -> User | None:
+    """
+    Elimina físicamente el registro del usuario de la BD.
+
+    Los refresh_tokens se borran por CASCADE definido en el modelo.
+    expire_on_commit=False (configurado en database.py) garantiza que
+    los atributos del objeto siguen accesibles después del commit.
+    Solo llamar si el servicio ya verificó que no hay actividad asociada.
+    """
+    user = await get_user_by_id(db, document_id)
+    if user is None:
+        return None
+
+    await db.delete(user)
+    await db.commit()
+    return user

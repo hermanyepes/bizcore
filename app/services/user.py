@@ -35,10 +35,13 @@
 
 import math
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, PermissionDeniedError
 from app.crud import user as user_crud
+from app.models.inventory_movement import InventoryMovement
+from app.models.order import Order
 from app.models.user import User
 from app.schemas.user import UserCreate, UserPaginated, UserResponse, UserUpdate
 from app.services.validation import check_unique_field
@@ -163,22 +166,64 @@ class UserService:
         """
         Actualiza solo los campos que el cliente envió.
 
-        ¿Por qué no verificar unicidad de email aquí?
-        update_user en el crud usa exclude_unset=True — si el cliente
-        no envió email, ese campo no llega al setattr y no se modifica.
-        Si el cliente sí envió email, el crud lo aplica directamente.
-
-        Nota de diseño: si en el futuro se añade validación de email
-        único en PUT (ej: el admin puede cambiar el email de un usuario),
-        ese check se añadiría aquí — no en el endpoint ni en el crud.
-
-        La verificación de existencia devuelve None si no se encuentra
-        el document_id — en ese caso lanzamos NotFoundError (404).
+        Si el payload incluye `email` (campo exclusivo de UserUpdateSuperadmin),
+        verifica unicidad excluyendo al propio usuario antes de actualizar.
         """
+        update_fields = data.model_dump(exclude_unset=True)
+        if "email" in update_fields and update_fields["email"] is not None:
+            await check_unique_field(
+                db, User, "email", update_fields["email"],
+                exclude_id=document_id, pk_field="document_id",
+            )
+
         user = await user_crud.update_user(db, document_id, data)
         if user is None:
             raise NotFoundError("Usuario", document_id)
         return user
+
+    # ============================================================
+    # HARD DELETE — Borrado físico (solo Superadmin, sin actividad)
+    # ============================================================
+
+    async def hard_delete(self, db: AsyncSession, document_id: str) -> User:
+        """
+        Elimina físicamente un usuario de la BD.
+
+        Condiciones previas verificadas:
+        1. El usuario existe (404 si no).
+        2. No tiene órdenes ni movimientos de inventario asociados
+           (403 con mensaje claro si los tiene).
+
+        Los refresh tokens se revocan por CASCADE automáticamente.
+        El objeto User devuelto es el snapshot en memoria antes del borrado.
+        """
+        user = await user_crud.get_user_by_id(db, document_id)
+        if user is None:
+            raise NotFoundError("Usuario", document_id)
+
+        orders_count = (
+            await db.execute(
+                select(func.count()).where(Order.created_by_id == document_id)
+            )
+        ).scalar_one()
+
+        movements_count = (
+            await db.execute(
+                select(func.count()).where(
+                    InventoryMovement.created_by_id == document_id
+                )
+            )
+        ).scalar_one()
+
+        if orders_count > 0 or movements_count > 0:
+            raise PermissionDeniedError(
+                "El usuario tiene actividad registrada. Usa desactivar en su lugar."
+            )
+
+        deleted = await user_crud.hard_delete_user(db, document_id)
+        if deleted is None:
+            raise NotFoundError("Usuario", document_id)
+        return deleted
 
     # ============================================================
     # DELETE — Soft delete (desactivar)

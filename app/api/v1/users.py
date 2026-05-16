@@ -28,9 +28,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import UserRole
 from app.core.exceptions import PermissionDeniedError
-from app.dependencies import get_current_user, get_db, require_admin
+from app.dependencies import get_current_user, get_db, require_admin, require_superadmin
 from app.models.user import User
-from app.schemas.user import UserCreate, UserPaginated, UserResponse, UserUpdate
+from app.schemas.user import (
+    UserCreate,
+    UserPaginated,
+    UserResponse,
+    UserUpdate,
+    UserUpdateSuperadmin,
+)
 from app.services.user import user_service
 
 # prefix="/users": todas las rutas empiezan con /users
@@ -160,7 +166,7 @@ async def create_user(
 @router.put("/{document_id}", response_model=UserResponse)
 async def update_user(
     document_id: str,
-    data: UserUpdate,
+    data: UserUpdateSuperadmin,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> UserResponse:
@@ -168,12 +174,15 @@ async def update_user(
     Actualiza los datos de un usuario. Solo se modifican los campos enviados.
 
     PUT /api/v1/users/1000000001
-    Body: UserUpdate (solo los campos que quieres cambiar)
+    Body: UserUpdateSuperadmin (los campos que quieres cambiar)
     Requiere: JWT con rol Administrador o Superadmin
 
     HU-018 — restricciones para el Administrador:
     - No puede modificar usuarios con rol Superadmin.
     - No puede cambiar el rol de alguien a Administrador ni Superadmin.
+    - No puede cambiar el email (campo descartado silenciosamente).
+
+    Superadmin puede cambiar el email para corregir errores tipográficos.
     """
     # HU-018: pre-fetch para verificar el rol del usuario objetivo
     target = await user_service.get(db, document_id)
@@ -187,8 +196,44 @@ async def update_user(
             raise PermissionDeniedError(
                 "Administrador no puede promover usuarios a rol Administrador ni Superadmin."
             )
+        # Email ignorado para Administrador — reconstruir el payload sin ese campo
+        filtered = data.model_dump(exclude_unset=True)
+        filtered.pop("email", None)
+        data = UserUpdateSuperadmin.model_validate(filtered)
 
     user = await user_service.update(db, document_id, data)
+    return UserResponse.model_validate(user)
+
+
+# ============================================================
+# DELETE /api/v1/users/{document_id}/permanent — Borrado físico (solo Superadmin)
+# ============================================================
+# IMPORTANTE: esta ruta DEBE ir antes de /{document_id} (soft delete).
+# FastAPI evalúa rutas en orden de declaración. Sin esta precaución,
+# "/{document_id}" matchearía "1234/permanent" como document_id="1234"
+# y nunca entraría a este endpoint.
+@router.delete("/{document_id}/permanent", response_model=UserResponse)
+async def hard_delete_user(
+    document_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+) -> UserResponse:
+    """
+    Elimina físicamente un usuario inactivo sin actividad registrada.
+
+    DELETE /api/v1/users/{document_id}/permanent
+    Requiere: JWT con rol Superadmin
+
+    Condiciones:
+    - El usuario debe existir (404 si no).
+    - El usuario NO debe tener órdenes ni movimientos de inventario.
+      Si tiene → 403 con mensaje: "El usuario tiene actividad registrada…"
+    - Los refresh tokens se revocan automáticamente por CASCADE en BD.
+
+    Flujo de doble intención: primero desactivar (DELETE /{id}),
+    luego eliminar permanentemente desde la vista de detalle.
+    """
+    user = await user_service.hard_delete(db, document_id)
     return UserResponse.model_validate(user)
 
 
