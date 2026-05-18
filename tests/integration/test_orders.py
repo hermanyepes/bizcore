@@ -21,7 +21,9 @@
 from datetime import UTC, datetime
 
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.security import hash_password
 from app.models.order import Order
 from app.models.product import Product
 from app.models.supplier import Supplier
@@ -473,12 +475,9 @@ async def test_actualizar_pedido_como_empleado(
     order: Order,
 ) -> None:
     """
-    Un Empleado puede llamar al endpoint PUT /orders/{id} — endpoint-level permite
-    cualquier usuario autenticado (require_employee).
-
-    Las restricciones de row-level (solo puede actualizar sus propias órdenes
-    en estado PENDIENTE) se implementarán en el servicio en la Sesión 5
-    del roadmap. Por ahora el endpoint devuelve 200.
+    El endpoint legacy PUT /orders/{id} no tiene row-level — es accesible
+    para cualquier autenticado. El row-level vive en el nuevo endpoint
+    PUT /orders/{id}/status implementado en la Sesión 5.
     """
     response = await client.put(
         f"/api/v1/orders/{order.id}",
@@ -541,12 +540,8 @@ async def test_cancelar_pedido_como_empleado(
     order: Order,
 ) -> None:
     """
-    Un Empleado puede llamar al endpoint DELETE /orders/{id} — endpoint-level permite
-    cualquier usuario autenticado (require_employee).
-
-    Las restricciones de row-level (solo puede cancelar sus propias órdenes)
-    se implementarán en el servicio en la Sesión 5 del roadmap.
-    Por ahora el endpoint devuelve 200.
+    El endpoint legacy DELETE /orders/{id} no tiene row-level. La cancelación
+    con restricciones de rol se hace via el nuevo PUT /orders/{id}/status.
     """
     response = await client.delete(
         f"/api/v1/orders/{order.id}",
@@ -656,3 +651,240 @@ async def test_filtrar_pedidos_status_inexistente_devuelve_lista_vacia(
     data = response.json()
     assert data["total"] == 0
     assert data["items"] == []
+
+
+# ============================================================
+# Row-level security — HU-043 / HU-046
+# ============================================================
+
+
+async def test_employee_lists_only_own_orders(
+    client: AsyncClient,
+    employee_token: str,
+    employee_user: User,
+    admin_user: User,
+    supplier: Supplier,
+    product: Product,
+    db: AsyncSession,
+) -> None:
+    """
+    GET /orders con token de Empleado devuelve SOLO las órdenes creadas por ese empleado.
+
+    Setup: 2 órdenes del empleado + 2 del admin.
+    Esperado: total=2, todas con created_by_id del empleado.
+    """
+    now = datetime.now(UTC)
+    for _ in range(2):
+        o = Order(
+            supplier_id=supplier.id,
+            created_by_id=employee_user.document_id,
+            status="PENDIENTE",
+            created_at=now,
+        )
+        db.add(o)
+    for _ in range(2):
+        o = Order(
+            supplier_id=supplier.id,
+            created_by_id=admin_user.document_id,
+            status="PENDIENTE",
+            created_at=now,
+        )
+        db.add(o)
+    await db.commit()
+
+    response = await client.get(
+        "/api/v1/orders/",
+        headers={"Authorization": f"Bearer {employee_token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 2
+    for item in data["items"]:
+        assert item["created_by_id"] == employee_user.document_id
+
+
+async def test_employee_cannot_view_other_employee_order(
+    client: AsyncClient,
+    employee_token: str,
+    supplier: Supplier,
+    product: Product,
+    db: AsyncSession,
+) -> None:
+    """
+    GET /orders/{id} con token de empleado A sobre una orden del empleado B → 403.
+    """
+    # Crear empleado B directamente en la BD
+    employee_b = User(
+        document_id="2000000099",
+        document_type="CC",
+        full_name="Empleado B",
+        email="empleadob@test.com",
+        role="Empleado",
+        password_hash=hash_password("EmpB1234!"),
+        is_active=True,
+        join_date=datetime.now(UTC),
+        created_at=datetime.now(UTC),
+    )
+    db.add(employee_b)
+    await db.commit()
+    await db.refresh(employee_b)
+
+    # Orden creada por empleado B
+    order_b = Order(
+        supplier_id=supplier.id,
+        created_by_id=employee_b.document_id,
+        status="PENDIENTE",
+        created_at=datetime.now(UTC),
+    )
+    db.add(order_b)
+    await db.commit()
+    await db.refresh(order_b)
+
+    # Empleado A (employee_token) intenta ver la orden de B → 403
+    response = await client.get(
+        f"/api/v1/orders/{order_b.id}",
+        headers={"Authorization": f"Bearer {employee_token}"},
+    )
+    assert response.status_code == 403
+
+
+async def test_employee_can_cancel_own_pending_order(
+    client: AsyncClient,
+    employee_token: str,
+    employee_user: User,
+    supplier: Supplier,
+    product: Product,
+    db: AsyncSession,
+) -> None:
+    """
+    Empleado cancela su propia orden pendiente con cancel_reason → 200.
+    La respuesta incluye el nuevo status y la razón de cancelación.
+    """
+    order = Order(
+        supplier_id=supplier.id,
+        created_by_id=employee_user.document_id,
+        status="PENDIENTE",
+        created_at=datetime.now(UTC),
+    )
+    db.add(order)
+    await db.commit()
+    await db.refresh(order)
+
+    response = await client.put(
+        f"/api/v1/orders/{order.id}/status",
+        json={"status": "CANCELADA", "cancel_reason": "Ya no necesito el producto"},
+        headers={"Authorization": f"Bearer {employee_token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "CANCELADA"
+    assert data["cancel_reason"] == "Ya no necesito el producto"
+
+
+async def test_employee_cannot_cancel_other_order(
+    client: AsyncClient,
+    employee_token: str,
+    admin_user: User,
+    supplier: Supplier,
+    product: Product,
+    db: AsyncSession,
+) -> None:
+    """
+    Empleado intenta cancelar una orden ajena → 403.
+    """
+    order_admin = Order(
+        supplier_id=supplier.id,
+        created_by_id=admin_user.document_id,
+        status="PENDIENTE",
+        created_at=datetime.now(UTC),
+    )
+    db.add(order_admin)
+    await db.commit()
+    await db.refresh(order_admin)
+
+    response = await client.put(
+        f"/api/v1/orders/{order_admin.id}/status",
+        json={"status": "CANCELADA", "cancel_reason": "Intento de cancelación ajena"},
+        headers={"Authorization": f"Bearer {employee_token}"},
+    )
+    assert response.status_code == 403
+
+
+async def test_employee_cannot_approve_order(
+    client: AsyncClient,
+    employee_token: str,
+    employee_user: User,
+    supplier: Supplier,
+    db: AsyncSession,
+) -> None:
+    """
+    Empleado intenta aprobar su propia orden → 403.
+    El Empleado no tiene permiso para ejecutar PENDIENTE → APROBADA.
+    """
+    order = Order(
+        supplier_id=supplier.id,
+        created_by_id=employee_user.document_id,
+        status="PENDIENTE",
+        created_at=datetime.now(UTC),
+    )
+    db.add(order)
+    await db.commit()
+    await db.refresh(order)
+
+    response = await client.put(
+        f"/api/v1/orders/{order.id}/status",
+        json={"status": "APROBADA"},
+        headers={"Authorization": f"Bearer {employee_token}"},
+    )
+    assert response.status_code == 403
+
+
+async def test_supervisor_can_view_all_orders(
+    client: AsyncClient,
+    supervisor_token: str,
+    supervisor_user: User,
+    employee_user: User,
+    admin_user: User,
+    supplier: Supplier,
+    db: AsyncSession,
+) -> None:
+    """
+    GET /orders con token de Supervisor devuelve órdenes de todos los usuarios.
+    El Supervisor no tiene filtro de row-level — ve todo.
+    """
+    now = datetime.now(UTC)
+    o1 = Order(
+        supplier_id=supplier.id,
+        created_by_id=employee_user.document_id,
+        status="PENDIENTE",
+        created_at=now,
+    )
+    o2 = Order(
+        supplier_id=supplier.id,
+        created_by_id=admin_user.document_id,
+        status="PENDIENTE",
+        created_at=now,
+    )
+    o3 = Order(
+        supplier_id=supplier.id,
+        created_by_id=supervisor_user.document_id,
+        status="PENDIENTE",
+        created_at=now,
+    )
+    db.add_all([o1, o2, o3])
+    await db.commit()
+
+    response = await client.get(
+        "/api/v1/orders/",
+        headers={"Authorization": f"Bearer {supervisor_token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 3
+    created_by_ids = {item["created_by_id"] for item in data["items"]}
+    assert employee_user.document_id in created_by_ids
+    assert admin_user.document_id in created_by_ids
+    assert supervisor_user.document_id in created_by_ids

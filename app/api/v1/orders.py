@@ -40,7 +40,8 @@ import math
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError
+from app.constants import UserRole
+from app.core.exceptions import NotFoundError, PermissionDeniedError
 from app.crud import order as order_crud
 from app.dependencies import get_db, require_employee
 from app.models.user import User
@@ -48,6 +49,7 @@ from app.schemas.order import (
     OrderCreate,
     OrderPaginated,
     OrderResponse,
+    OrderStatusUpdate,
     OrderUpdate,
 )
 from app.services import order as order_service
@@ -72,15 +74,20 @@ async def list_orders(
     """
     Lista pedidos de compra con paginación y filtros opcionales.
 
+    Row-level security (HU-043):
+    - Empleado    → solo sus propias órdenes (WHERE created_by_id = document_id)
+    - Supervisor+ → todas las órdenes sin restricción
+
     GET /api/v1/orders?page=1&page_size=10
     GET /api/v1/orders?status=PENDIENTE
-    GET /api/v1/orders?supplier_id=3&status=RECIBIDO
+    GET /api/v1/orders?supplier_id=3&status=APROBADA
     Requiere: JWT válido (cualquier rol)
     """
     skip = (page - 1) * page_size
 
-    orders, total = await order_crud.get_orders(
-        db,
+    orders, total = await order_service.list_orders_for_user(
+        db=db,
+        current_user=current_user,
         skip=skip,
         limit=page_size,
         supplier_id=supplier_id,
@@ -110,20 +117,24 @@ async def get_order(
     """
     Devuelve los datos completos de un pedido, incluyendo todos sus ítems.
 
+    Row-level security (HU-043):
+    - Empleado que intenta ver una orden ajena → 403.
+    - Supervisor+ puede ver cualquier orden.
+
     GET /api/v1/orders/1
     Requiere: JWT válido (cualquier rol)
 
-    La respuesta incluye:
-    - Encabezado del pedido (proveedor, status, notas, fecha)
-    - Lista de ítems con producto, cantidad, precio unitario y subtotal
-
     Si order_id no existe → 404.
-    Si el token JWT es inválido o falta → 401.
+    Si el Empleado intenta ver una orden ajena → 403.
     """
     order = await order_crud.get_order_by_id(db, order_id)
 
     if order is None:
         raise NotFoundError("Pedido", order_id)
+
+    if current_user.role == UserRole.EMPLOYEE:
+        if order.created_by_id != current_user.document_id:
+            raise PermissionDeniedError("No tienes acceso a esta orden")
 
     return OrderResponse.model_validate(order)
 
@@ -181,7 +192,46 @@ async def create_order(
 
 
 # ============================================================
-# PUT /api/v1/orders/{order_id} — Actualizar pedido
+# PUT /api/v1/orders/{order_id}/status — Cambiar estado (máquina de estados)
+# ============================================================
+@router.put("/{order_id}/status", response_model=OrderResponse)
+async def update_order_status(
+    order_id: int,
+    data: OrderStatusUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_employee),
+) -> OrderResponse:
+    """
+    Cambia el estado de una orden aplicando la máquina de estados completa.
+
+    PUT /api/v1/orders/1/status
+    Body: {"status": "APROBADA"} | {"status": "CANCELADA", "cancel_reason": "..."}
+
+    Transiciones válidas (ver docs/diagramas/flujo-orden.md):
+      PENDIENTE → APROBADA   (Supervisor / Admin / Superadmin)
+      PENDIENTE → CANCELADA  (cualquier autenticado — row-level en service)
+      APROBADA  → ENTREGADA  (Supervisor / Admin / Superadmin)
+      APROBADA  → CANCELADA  (Supervisor / Admin / Superadmin)
+
+    Restricciones de rol (HU-043, HU-046):
+    - Empleado: solo PENDIENTE → CANCELADA sobre su propia orden con cancel_reason.
+    - Cualquier otra transición por parte del Empleado → 403.
+    - Orden ajena para el Empleado → 403.
+
+    Si order_id no existe → 404.
+    """
+    order = await order_service.update_status(
+        db=db,
+        order_id=order_id,
+        new_status=data.status,
+        current_user=current_user,
+        cancel_reason=data.cancel_reason,
+    )
+    return OrderResponse.model_validate(order)
+
+
+# ============================================================
+# PUT /api/v1/orders/{order_id} — Actualizar pedido (legacy)
 # ============================================================
 @router.put("/{order_id}", response_model=OrderResponse)
 async def update_order(

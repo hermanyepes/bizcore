@@ -31,14 +31,20 @@
 #
 # ============================================================
 
+import math
+
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import UserRole
+from app.crud import product as product_crud
 from app.dependencies import get_current_user, get_db, require_admin, require_supervisor
 from app.models.user import User
+from app.schemas.common import PaginatedResponse
 from app.schemas.product import (
+    ProductBaseResponse,
     ProductCreate,
-    ProductPaginated,
+    ProductDetailResponse,
     ProductResponse,
     ProductUpdate,
 )
@@ -53,50 +59,64 @@ router = APIRouter(prefix="/products", tags=["products"])
 # ============================================================
 # GET /api/v1/products — Listar productos (paginado)
 # ============================================================
-@router.get("/", response_model=ProductPaginated)
+@router.get("/")
 async def list_products(
-    page: int = Query(default=1, ge=1),  # mínimo página 1
-    page_size: int = Query(default=10, ge=1, le=100),  # entre 1 y 100 registros
-    is_active: bool | None = Query(default=None),  # True/False/None (todos)
-    category: str | None = Query(default=None),  # ej: 'Bebidas', 'Snacks'
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
+    is_active: bool | None = Query(default=None),
+    category: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),  # cualquier usuario autenticado
-) -> ProductPaginated:
+    current_user: User = Depends(get_current_user),
+):
     """
     Lista productos con paginación y filtros opcionales.
 
-    GET /api/v1/products?page=1&page_size=10
-    GET /api/v1/products?is_active=true              ← catálogo activo
-    GET /api/v1/products?category=Bebidas&is_active=true
-    GET /api/v1/products?is_active=false             ← productos desactivados (admin)
+    Column-level security (HU-022):
+    - Empleado     → ProductBaseResponse (sin cost_price ni margin)
+    - Supervisor+  → ProductDetailResponse (con cost_price y margin)
 
-    Filtros opcionales — si no se envían, devuelve todos los registros.
+    GET /api/v1/products?page=1&page_size=10
+    GET /api/v1/products?is_active=true
+    GET /api/v1/products?category=Bebidas&is_active=true
     """
-    return await product_service.list(db, page, page_size, is_active, category)
+    skip = (page - 1) * page_size
+    products, total = await product_crud.get_products(
+        db, skip=skip, limit=page_size, is_active=is_active, category=category
+    )
+    pages = math.ceil(total / page_size) if total > 0 else 0
+
+    if current_user.role == UserRole.EMPLOYEE:
+        items = [ProductBaseResponse.model_validate(p) for p in products]
+    else:
+        items = [ProductDetailResponse.model_validate(p) for p in products]
+
+    return PaginatedResponse(
+        items=items, total=total, page=page, page_size=page_size, pages=pages
+    )
 
 
 # ============================================================
 # GET /api/v1/products/{id} — Obtener un producto
 # ============================================================
-@router.get("/{product_id}", response_model=ProductResponse)
+@router.get("/{product_id}")
 async def get_product(
     product_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> ProductResponse:
+) -> ProductBaseResponse | ProductDetailResponse:
     """
     Devuelve los datos de un producto específico.
 
-    GET /api/v1/products/1
+    Column-level security (HU-022):
+    - Empleado     → ProductBaseResponse (sin cost_price ni margin)
+    - Supervisor+  → ProductDetailResponse (con cost_price y margin)
 
-    ¿Por qué product_id es int y document_id era str?
-    Porque el id de Product es autoincremental (entero).
-    FastAPI automáticamente convierte "1" (string de la URL) a int.
-    Si alguien envía /products/abc, FastAPI devuelve 422 antes de
-    llegar al endpoint — "abc" no es un entero válido.
+    GET /api/v1/products/1
     """
     product = await product_service.get(db, product_id)
-    return ProductResponse.model_validate(product)
+    if current_user.role == UserRole.EMPLOYEE:
+        return ProductBaseResponse.model_validate(product)
+    return ProductDetailResponse.model_validate(product)
 
 
 # ============================================================

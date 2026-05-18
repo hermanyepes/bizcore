@@ -34,7 +34,6 @@ from app.schemas.user import (
     UserCreate,
     UserPaginated,
     UserResponse,
-    UserUpdate,
     UserUpdateSuperadmin,
 )
 from app.services.user import user_service

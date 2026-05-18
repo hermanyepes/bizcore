@@ -97,7 +97,7 @@ class OrderUpdate(BaseModel):
     """
     Datos que se pueden actualizar en un pedido existente.
 
-    PUT /api/v1/orders/{id}
+    PUT /api/v1/orders/{id}  (endpoint legacy — sin restricciones de rol)
 
     ¿POR QUÉ SOLO STATUS Y NOTES?
     Los ítems son inmutables una vez creados. Si ya se registró que
@@ -106,21 +106,28 @@ class OrderUpdate(BaseModel):
 
     Si el pedido fue mal, se cancela (status="CANCELADO") y se crea
     uno nuevo. No se editan las líneas.
-
-    ¿POR QUÉ NO INCLUIMOS `is_active`?
-    Los pedidos no tienen soft delete con is_active.
-    El "equivalente" de desactivar un pedido es ponerle status="CANCELADO".
     """
 
-    # status: el nuevo estado del pedido.
-    # Literal: solo estos tres valores son válidos.
-    # | None: el campo es opcional — si no se envía, no se cambia.
     status: Literal["PENDIENTE", "COMPLETADO", "CANCELADO"] | None = None
-
-    # notes: actualizar el comentario del pedido.
-    # | None con default=None: si no se envía, no se cambia.
-    # Si se envía explícitamente notes=None, borra las notas existentes.
     notes: str | None = Field(default=None, max_length=300)
+
+
+class OrderStatusUpdate(BaseModel):
+    """
+    Payload para el endpoint PUT /api/v1/orders/{id}/status.
+
+    Implementa la máquina de estados completa (HU-046):
+      PENDIENTE → APROBADA    (Supervisor+)
+      PENDIENTE → CANCELADA   (cualquier autenticado — row-level en service)
+      APROBADA  → ENTREGADA   (Supervisor+)
+      APROBADA  → CANCELADA   (Supervisor+)
+
+    cancel_reason es obligatorio cuando el Empleado cancela su propia orden.
+    Para Supervisor+, es opcional pero recomendado.
+    """
+
+    status: Literal["APROBADA", "ENTREGADA", "CANCELADA"]
+    cancel_reason: str | None = Field(default=None, max_length=500)
 
 
 # ============================================================
@@ -173,6 +180,7 @@ class OrderResponse(BaseModel):
     created_by_id: str | None  # None si el usuario fue borrado (SET NULL)
     status: str
     notes: str | None
+    cancel_reason: str | None  # None hasta que la orden pase a CANCELADA
     created_at: datetime
 
     # Lista de ítems anidada — la novedad visual de este schema.

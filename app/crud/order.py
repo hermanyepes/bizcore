@@ -69,28 +69,25 @@ async def get_orders(
     limit: int = 10,
     supplier_id: int | None = None,
     status: str | None = None,
+    created_by_id: str | None = None,
 ) -> tuple[list[Order], int]:
     """
     Devuelve una página de pedidos + el total de registros.
 
     Filtros opcionales:
     - supplier_id: filtra pedidos de un proveedor específico
-    - status: 'PENDIENTE' | 'RECIBIDO' | 'CANCELADO' | None (todos)
-
-    Ambos filtros son independientes y se pueden combinar:
-      GET /api/v1/orders?supplier_id=3&status=PENDIENTE
-      → solo pedidos pendientes del proveedor 3
+    - status: 'PENDIENTE' | 'APROBADA' | 'ENTREGADA' | 'CANCELADA' | None (todos)
+    - created_by_id: row-level security — limita al usuario propietario (HU-043)
 
     Los pedidos se ordenan del más reciente al más antiguo (created_at DESC).
     """
-    # Construir la lista de filtros opcionales.
-    # get_paginated los aplica a base_query y count_query en el mismo loop.
     filters = []
     if supplier_id is not None:
         filters.append(Order.supplier_id == supplier_id)
-    # status: 'PENDIENTE' | 'RECIBIDO' | 'CANCELADO'
     if status is not None:
         filters.append(Order.status == status)
+    if created_by_id is not None:
+        filters.append(Order.created_by_id == created_by_id)
 
     # selectinload carga los ítems de cada pedido en una segunda query.
     # Solo aplica a base_query — el COUNT nunca necesita cargar relaciones.
