@@ -8,26 +8,28 @@
 #
 # Su trabajo es mínimo:
 #   1. Verificar que el cliente trae su credencial (JWT)
-#   2. Pedirle el reporte al asistente (services/dashboard.py)
-#   3. Entregárselo al cliente
+#   2. Verificar que el rol tiene permiso para ver métricas
+#   3. Pedirle el reporte al asistente (services/dashboard.py)
+#   4. Entregárselo al cliente
 #
 # No calcula nada, no valida reglas de negocio, no coordina tablas.
 # Toda la lógica vive en el servicio — el endpoint solo conecta
 # la petición HTTP con ese servicio.
 #
-# ¿POR QUÉ CUALQUIER ROL PUEDE VER EL DASHBOARD?
-# En este negocio, tanto el Administrador como el Empleado necesitan
-# ver el estado del inventario y los pedidos para hacer su trabajo.
-# Restringirlo solo al Admin sería más restrictivo de lo necesario.
-# No hay datos sensibles aquí — son métricas del negocio, no datos
-# personales ni financieros individuales.
+# ¿POR QUÉ SOLO SUPERVISOR EN ADELANTE?
+# El dashboard expone métricas operativas y financieras del negocio:
+# valor total del inventario, conteo global de órdenes y lista de
+# productos con stock crítico. La matriz de permisos (sección 2.6)
+# prohíbe al Empleado ver estos datos — son cifras del negocio,
+# no de sus propios pedidos.
+# Ver: docs/roles/matriz-permisos.md sección 2.6.
 #
 # ============================================================
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_current_user, get_db
+from app.dependencies import get_db, require_supervisor
 from app.models.user import User
 from app.schemas.dashboard import DashboardSummary
 from app.services import dashboard as dashboard_service
@@ -43,13 +45,15 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 @router.get("/summary", response_model=DashboardSummary)
 async def get_summary(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    # require_supervisor: Empleado no puede ver métricas del negocio.
+    # Ver matriz-permisos.md sección 2.6 — todos los dashboards: ❌ Empleado.
+    current_user: User = Depends(require_supervisor),
 ) -> DashboardSummary:
     """
     Devuelve las métricas de negocio en tiempo real.
 
     GET /api/v1/dashboard/summary
-    Requiere: JWT válido (cualquier rol — Administrador o Empleado)
+    Requiere: Supervisor, Administrador o Superadmin (Empleado → 403)
 
     Respuesta incluye:
     - total_active_users     → usuarios con is_active=True
@@ -65,11 +69,9 @@ async def get_summary(
     Esto permite reutilizar las métricas desde otro contexto
     (una tarea programada, un email diario) sin duplicar código.
 
-    ¿Por qué `current_user` está en la firma aunque no lo usamos?
-    Porque `Depends(get_current_user)` tiene un efecto secundario:
-    verifica que el token JWT sea válido. Si no hay token o es
-    inválido, FastAPI devuelve 401 automáticamente ANTES de
-    ejecutar el cuerpo de la función. Sin esta línea, el endpoint
-    sería público — cualquiera podría ver las métricas sin autenticarse.
+    ¿Por qué `current_user` está en la firma aunque no lo usemos?
+    Porque `Depends(require_supervisor)` tiene un efecto secundario:
+    verifica que el token JWT sea válido Y que el rol esté permitido.
+    Sin esta línea, el endpoint sería público.
     """
     return await dashboard_service.get_dashboard_summary(db)
