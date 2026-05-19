@@ -86,6 +86,25 @@ class UserUpdateSuperadmin(UserUpdate):
     email: EmailStr | None = None
 
 
+class UserSelfUpdate(BaseModel):
+    """
+    Campos que cualquier usuario puede actualizar en su propio perfil.
+
+    PUT /api/v1/users/me
+    Body: {"full_name": "...", "phone": "...", "city": "..."}
+
+    Deliberadamente más restrictivo que UserUpdate:
+    - NO puede cambiar email (lo gestiona solo Superadmin)
+    - NO puede cambiar role (requiere Admin)
+    - NO puede cambiar is_active (requiere Admin)
+    - NO puede cambiar password (flujo separado en /auth/change-password)
+    """
+
+    full_name: str | None = Field(default=None, max_length=80)
+    phone: str | None = Field(default=None, max_length=15)
+    city: str | None = Field(default=None, max_length=50)
+
+
 class UserResponse(BaseModel):
     """
     Datos del usuario que la API devuelve al cliente.

@@ -30,12 +30,15 @@ from app.constants import UserRole
 from app.core.config import settings
 from app.core.exceptions import PermissionDeniedError
 from app.core.limiter import limiter
+from app.crud.audit_log import log as audit_log
+from app.crud.refresh_token import revoke_all_user_tokens
 from app.dependencies import get_current_user, get_db, require_admin, require_superadmin
 from app.models.user import User
 from app.schemas.user import (
     UserCreate,
     UserPaginated,
     UserResponse,
+    UserSelfUpdate,
     UserUpdateSuperadmin,
 )
 from app.services.user import user_service
@@ -99,6 +102,41 @@ async def get_me(
     de PostgreSQL — no hay que volver a buscarlo.
     """
     # El JWT ya contiene la identidad — simplemente retornamos el usuario
+    return UserResponse.model_validate(current_user)
+
+
+# ============================================================
+# PUT /api/v1/users/me — Editar el propio perfil (cualquier rol)
+# ============================================================
+# IMPORTANTE: esta ruta DEBE estar antes de PUT /{document_id}.
+# FastAPI evalúa rutas en orden; si /{document_id} llegara primero,
+# "me" sería interpretado como document_id="me" → 404.
+@router.put("/me", response_model=UserResponse)
+@limiter.limit("30/minute")
+async def update_me(
+    request: Request,
+    data: UserSelfUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> UserResponse:
+    """
+    Actualiza el perfil del usuario autenticado.
+
+    PUT /api/v1/users/me
+    Body: {"full_name": "...", "phone": "...", "city": "..."}
+    Requiere: JWT válido (cualquier rol)
+
+    Solo se pueden cambiar full_name, phone y city.
+    Email, rol e is_active requieren Admin o Superadmin.
+    Para cambiar la contraseña usar POST /auth/change-password.
+    """
+    # Aplicamos solo los campos que vinieron en la request (exclude_unset=True).
+    # Si el cliente envía {} vacío, no cambiamos nada — idempotente.
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(current_user, field, value)
+
+    await db.commit()
+    await db.refresh(current_user)
     return UserResponse.model_validate(current_user)
 
 
@@ -296,3 +334,50 @@ async def delete_user(
 
     user = await user_service.delete(db, document_id)
     return UserResponse.model_validate(user)
+
+
+# ============================================================
+# POST /api/v1/users/{document_id}/force-logout
+# ============================================================
+@router.post("/{document_id}/force-logout", status_code=status.HTTP_200_OK)
+@limiter.limit("30/minute")
+async def force_logout_user(
+    request: Request,
+    document_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, str]:
+    """
+    Revoca todos los refresh tokens activos de un usuario.
+
+    POST /api/v1/users/{document_id}/force-logout
+    Requiere: JWT con rol Administrador o Superadmin
+
+    Casos de uso:
+    - Dispositivo robado: el admin cierra la sesión del usuario de forma remota.
+    - Sospecha de compromiso: revocar todas las sesiones activas de golpe.
+
+    HU-018: Admin no puede forzar el logout de otro Admin ni de Superadmin.
+    El usuario afectado notará el cierre cuando intente renovar su access token.
+    """
+    target = await user_service.get(db, document_id)
+
+    # Admin no puede force-logout a pares ni superiores
+    if admin.role == UserRole.ADMIN and target.role in (UserRole.SUPERADMIN, UserRole.ADMIN):
+        raise PermissionDeniedError(
+            "Administrador no puede forzar el cierre de sesión de usuarios "
+            "con rol igual o superior."
+        )
+
+    count = await revoke_all_user_tokens(db, document_id)
+
+    await audit_log(
+        db=db,
+        user_id=admin.document_id,
+        action="force_logout",
+        resource="user",
+        resource_id=document_id,
+        changes={"tokens_revoked": count},
+    )
+
+    return {"message": f"Sesión forzada. {count} token(s) revocado(s)."}

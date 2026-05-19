@@ -87,3 +87,22 @@ class LogoutRequest(BaseModel):
     """
 
     refresh_token: str = Field(min_length=1)
+
+
+class ChangePasswordRequest(BaseModel):
+    """
+    Datos para cambiar la contraseña del usuario autenticado.
+
+    POST /api/v1/auth/change-password
+    Body: {"current_password": "...", "new_password": "..."}
+
+    current_password: la contraseña actual — verificada antes del cambio.
+    new_password: la nueva contraseña — mínimo 8 caracteres.
+
+    Después del cambio, TODOS los refresh tokens del usuario se revocan,
+    forzando re-login en todos los dispositivos. El access token activo
+    expirará solo en máximo 15 minutos.
+    """
+
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=8)

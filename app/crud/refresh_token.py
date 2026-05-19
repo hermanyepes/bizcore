@@ -15,7 +15,7 @@
 
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -111,3 +111,25 @@ async def revoke_refresh_token(
     """
     refresh_token.is_revoked = True
     await db.commit()
+
+
+async def revoke_all_user_tokens(db: AsyncSession, user_id: str) -> int:
+    """
+    Revoca todos los refresh tokens activos de un usuario.
+
+    Usado en cambio de contraseña y force-logout para forzar re-login
+    en todos los dispositivos. Devuelve el número de tokens revocados.
+
+    UPDATE masivo en vez de cargar cada token: más eficiente cuando el
+    usuario tiene múltiples sesiones simultáneas (móvil, escritorio, etc.).
+    """
+    result = await db.execute(
+        update(RefreshToken)
+        .where(
+            RefreshToken.user_id == user_id,
+            RefreshToken.is_revoked == False,  # noqa: E712
+        )
+        .values(is_revoked=True)
+    )
+    await db.commit()
+    return result.rowcount
