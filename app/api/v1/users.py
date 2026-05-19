@@ -23,11 +23,13 @@
 #
 # ============================================================
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import UserRole
+from app.core.config import settings
 from app.core.exceptions import PermissionDeniedError
+from app.core.limiter import limiter
 from app.dependencies import get_current_user, get_db, require_admin, require_superadmin
 from app.models.user import User
 from app.schemas.user import (
@@ -48,7 +50,9 @@ router = APIRouter(prefix="/users", tags=["users"])
 # GET /api/v1/users — Listar usuarios (paginado)
 # ============================================================
 @router.get("/", response_model=UserPaginated)
+@limiter.limit(settings.AUTHENTICATED_RATE_LIMIT)
 async def list_users(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     page: int = Query(default=1, ge=1),  # mínimo página 1
     page_size: int = Query(default=10, ge=1, le=100),  # entre 1 y 100 registros
     is_active: bool | None = Query(default=None),  # True/False/None (todos)
@@ -78,7 +82,9 @@ async def list_users(
 # llegara primero, "/me" sería interpretado como document_id="me"
 # y devolvería 404 en vez de entrar a este endpoint.
 @router.get("/me", response_model=UserResponse)
+@limiter.limit(settings.AUTHENTICATED_RATE_LIMIT)
 async def get_me(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     current_user: User = Depends(get_current_user),
 ) -> UserResponse:
     """
@@ -100,7 +106,9 @@ async def get_me(
 # GET /api/v1/users/{document_id} — Obtener un usuario
 # ============================================================
 @router.get("/{document_id}", response_model=UserResponse)
+@limiter.limit(settings.AUTHENTICATED_RATE_LIMIT)
 async def get_user(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     document_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_admin),  # solo Admin+ puede ver otros usuarios
@@ -126,7 +134,9 @@ async def get_user(
 # POST /api/v1/users — Crear usuario (Admin o Superadmin)
 # ============================================================
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 async def create_user(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     data: UserCreate,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),  # Admin o Superadmin puede crear usuarios
@@ -163,7 +173,9 @@ async def create_user(
 # PUT /api/v1/users/{document_id} — Actualizar usuario (Admin o Superadmin)
 # ============================================================
 @router.put("/{document_id}", response_model=UserResponse)
+@limiter.limit("30/minute")
 async def update_user(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     document_id: str,
     data: UserUpdateSuperadmin,
     db: AsyncSession = Depends(get_db),
@@ -220,7 +232,9 @@ async def update_user(
 # "/{document_id}" matchearía "1234/permanent" como document_id="1234"
 # y nunca entraría a este endpoint.
 @router.delete("/{document_id}/permanent", response_model=UserResponse)
+@limiter.limit("30/minute")
 async def hard_delete_user(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     document_id: str,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_superadmin),
@@ -248,7 +262,9 @@ async def hard_delete_user(
 # DELETE /api/v1/users/{document_id} — Desactivar usuario (Admin o Superadmin)
 # ============================================================
 @router.delete("/{document_id}", response_model=UserResponse)
+@limiter.limit("30/minute")
 async def delete_user(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     document_id: str,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),

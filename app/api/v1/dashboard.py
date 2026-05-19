@@ -26,9 +26,11 @@
 #
 # ============================================================
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
+from app.core.limiter import limiter
 from app.dependencies import get_db, require_supervisor
 from app.models.user import User
 from app.schemas.dashboard import DashboardSummary
@@ -43,7 +45,9 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 # GET /api/v1/dashboard/summary — Resumen del negocio
 # ============================================================
 @router.get("/summary", response_model=DashboardSummary)
+@limiter.limit(settings.AUTHENTICATED_RATE_LIMIT)
 async def get_summary(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     db: AsyncSession = Depends(get_db),
     # require_supervisor: Empleado no puede ver métricas del negocio.
     # Ver matriz-permisos.md sección 2.6 — todos los dashboards: ❌ Empleado.

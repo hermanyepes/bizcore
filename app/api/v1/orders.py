@@ -37,11 +37,13 @@
 
 import math
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import UserRole
+from app.core.config import settings
 from app.core.exceptions import NotFoundError, PermissionDeniedError
+from app.core.limiter import limiter
 from app.crud import order as order_crud
 from app.dependencies import get_db, require_employee
 from app.models.user import User
@@ -63,7 +65,9 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 # GET /api/v1/orders — Listar pedidos (paginado)
 # ============================================================
 @router.get("/", response_model=OrderPaginated)
+@limiter.limit(settings.AUTHENTICATED_RATE_LIMIT)
 async def list_orders(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     page: int = Query(default=1, ge=1),  # mínimo página 1
     page_size: int = Query(default=10, ge=1, le=100),  # entre 1 y 100 registros
     supplier_id: int | None = None,
@@ -109,7 +113,9 @@ async def list_orders(
 # GET /api/v1/orders/{order_id} — Obtener un pedido
 # ============================================================
 @router.get("/{order_id}", response_model=OrderResponse)
+@limiter.limit(settings.AUTHENTICATED_RATE_LIMIT)
 async def get_order(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     order_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_employee),  # cualquier usuario autenticado
@@ -143,7 +149,9 @@ async def get_order(
 # POST /api/v1/orders — Crear pedido (cualquier usuario autenticado)
 # ============================================================
 @router.post("/", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 async def create_order(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     data: OrderCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_employee),  # cualquier usuario autenticado
@@ -195,7 +203,9 @@ async def create_order(
 # PUT /api/v1/orders/{order_id}/status — Cambiar estado (máquina de estados)
 # ============================================================
 @router.put("/{order_id}/status", response_model=OrderResponse)
+@limiter.limit("30/minute")
 async def update_order_status(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     order_id: int,
     data: OrderStatusUpdate,
     db: AsyncSession = Depends(get_db),
@@ -234,7 +244,9 @@ async def update_order_status(
 # PUT /api/v1/orders/{order_id} — Actualizar pedido (legacy)
 # ============================================================
 @router.put("/{order_id}", response_model=OrderResponse)
+@limiter.limit("30/minute")
 async def update_order(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     order_id: int,
     data: OrderUpdate,
     db: AsyncSession = Depends(get_db),
@@ -270,7 +282,9 @@ async def update_order(
 # DELETE /api/v1/orders/{order_id} — Cancelar pedido
 # ============================================================
 @router.delete("/{order_id}", response_model=OrderResponse)
+@limiter.limit("30/minute")
 async def cancel_order(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     order_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_employee),  # cualquier autenticado — row-level en Sesión 5

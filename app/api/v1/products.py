@@ -33,10 +33,12 @@
 
 import math
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import UserRole
+from app.core.config import settings
+from app.core.limiter import limiter
 from app.crud import product as product_crud
 from app.dependencies import get_current_user, get_db, require_admin, require_supervisor
 from app.models.user import User
@@ -60,7 +62,9 @@ router = APIRouter(prefix="/products", tags=["products"])
 # GET /api/v1/products — Listar productos (paginado)
 # ============================================================
 @router.get("/")
+@limiter.limit(settings.AUTHENTICATED_RATE_LIMIT)
 async def list_products(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=10, ge=1, le=100),
     is_active: bool | None = Query(default=None),
@@ -99,7 +103,9 @@ async def list_products(
 # GET /api/v1/products/{id} — Obtener un producto
 # ============================================================
 @router.get("/{product_id}")
+@limiter.limit(settings.AUTHENTICATED_RATE_LIMIT)
 async def get_product(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     product_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -123,7 +129,9 @@ async def get_product(
 # POST /api/v1/products — Crear producto (Supervisor o superior)
 # ============================================================
 @router.post("/", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 async def create_product(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     data: ProductCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_supervisor),  # Supervisor, Admin o Superadmin
@@ -148,7 +156,9 @@ async def create_product(
 # PUT /api/v1/products/{id} — Actualizar producto (Supervisor o superior)
 # ============================================================
 @router.put("/{product_id}", response_model=ProductResponse)
+@limiter.limit("30/minute")
 async def update_product(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     product_id: int,
     data: ProductUpdate,
     db: AsyncSession = Depends(get_db),
@@ -175,7 +185,9 @@ async def update_product(
 # DELETE /api/v1/products/{id} — Desactivar producto (solo Admin+)
 # ============================================================
 @router.delete("/{product_id}", response_model=ProductResponse)
+@limiter.limit("30/minute")
 async def delete_product(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     product_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_admin),  # solo Admin o Superadmin — soft delete irreversible

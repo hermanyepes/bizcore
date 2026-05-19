@@ -132,3 +132,58 @@ async def test_security_headers_presentes_en_404(client: AsyncClient):
     # Y que los headers siguen presentes
     assert response.headers.get("x-content-type-options") == "nosniff"
     assert response.headers.get("x-frame-options") == "DENY"
+
+
+# ============================================================
+# Grupo 4 — Content-Security-Policy (HU-058)
+# ============================================================
+# CSP es la defensa principal contra XSS. Verifica que el header
+# exista y que las directivas mínimas estén presentes.
+# ============================================================
+
+
+@pytest.mark.anyio
+async def test_csp_header_presente(client: AsyncClient):
+    """
+    Content-Security-Policy debe estar presente en toda respuesta.
+
+    Qué verifica: que el middleware inyecta el header CSP —
+    la defensa de navegador más efectiva contra XSS.
+    """
+    response = await client.get("/")
+    assert "content-security-policy" in response.headers
+
+
+@pytest.mark.anyio
+async def test_csp_directivas_minimas(client: AsyncClient):
+    """
+    El CSP debe incluir las directivas de seguridad mínimas.
+
+    Qué verifica: que la política no es trivialmente permisiva.
+    default-src 'self' es la base. frame-ancestors 'none' reemplaza
+    X-Frame-Options en navegadores modernos.
+    """
+    response = await client.get("/")
+    csp = response.headers.get("content-security-policy", "")
+
+    assert "default-src 'self'" in csp
+    assert "script-src 'self'" in csp
+    assert "frame-ancestors 'none'" in csp
+    assert "base-uri 'self'" in csp
+    assert "form-action 'self'" in csp
+
+
+@pytest.mark.anyio
+async def test_csp_no_permite_scripts_externos_arbitrarios(client: AsyncClient):
+    """
+    script-src no debe permitir 'unsafe-eval' ni orígenes comodín.
+
+    Qué verifica: que el CSP no tiene las dos configuraciones más
+    peligrosas para XSS — eval() ejecuta strings como código,
+    y '*' permite cargar scripts de cualquier dominio.
+    """
+    response = await client.get("/")
+    csp = response.headers.get("content-security-policy", "")
+
+    assert "unsafe-eval" not in csp
+    assert "script-src *" not in csp

@@ -158,6 +158,24 @@ async def add_security_headers(request, call_next):
     )
     # Al navegar a otro sitio, solo envía el origen (bizcore.com), nunca la URL completa
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # connect-src: incluye los orígenes CORS para que el fetch del frontend no sea bloqueado
+    connect_origins = " ".join(settings.ALLOWED_ORIGINS)
+    csp_connect_src = f"'self' {connect_origins}".strip() if connect_origins else "'self'"
+    # 'unsafe-inline' en style-src: Angular inyecta estilos inline en host bindings y
+    # componentes con encapsulación Emulated. Sin esta directiva los componentes se rompen.
+    # Deuda técnica (A-04): endurecer con nonces CSP Level 3 cuando el CLI de Angular
+    # genere el hash/nonce automáticamente en ng build.
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data:; "
+        f"connect-src {csp_connect_src}; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    )
     return response
 
 

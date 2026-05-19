@@ -31,9 +31,11 @@
 #
 # ============================================================
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
+from app.core.limiter import limiter
 from app.dependencies import get_db, require_admin, require_supervisor
 from app.models.user import User
 from app.schemas.supplier import (
@@ -54,7 +56,9 @@ router = APIRouter(prefix="/suppliers", tags=["suppliers"])
 # GET /api/v1/suppliers — Listar proveedores (paginado)
 # ============================================================
 @router.get("/", response_model=SupplierPaginated)
+@limiter.limit(settings.AUTHENTICATED_RATE_LIMIT)
 async def list_suppliers(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     page: int = Query(default=1, ge=1),  # mínimo página 1
     page_size: int = Query(default=10, ge=1, le=100),  # entre 1 y 100 registros
     is_active: bool | None = Query(default=None),  # True/False/None (todos)
@@ -76,7 +80,9 @@ async def list_suppliers(
 # GET /api/v1/suppliers/{id} — Obtener un proveedor
 # ============================================================
 @router.get("/{supplier_id}", response_model=SupplierResponse)
+@limiter.limit(settings.AUTHENTICATED_RATE_LIMIT)
 async def get_supplier(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     supplier_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_supervisor),  # Supervisor+ puede ver proveedores
@@ -98,7 +104,9 @@ async def get_supplier(
 # POST /api/v1/suppliers — Crear proveedor (Supervisor o superior)
 # ============================================================
 @router.post("/", response_model=SupplierResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 async def create_supplier(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     data: SupplierCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_supervisor),  # Supervisor+ puede crear proveedores
@@ -123,7 +131,9 @@ async def create_supplier(
 # PUT /api/v1/suppliers/{id} — Actualizar proveedor (Supervisor o superior)
 # ============================================================
 @router.put("/{supplier_id}", response_model=SupplierResponse)
+@limiter.limit("30/minute")
 async def update_supplier(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     supplier_id: int,
     data: SupplierUpdate,
     db: AsyncSession = Depends(get_db),
@@ -149,7 +159,9 @@ async def update_supplier(
 # DELETE /api/v1/suppliers/{id} — Desactivar proveedor (solo Admin+)
 # ============================================================
 @router.delete("/{supplier_id}", response_model=SupplierResponse)
+@limiter.limit("30/minute")
 async def delete_supplier(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     supplier_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_admin),  # solo Admin+ — soft delete es una decisión administrativa

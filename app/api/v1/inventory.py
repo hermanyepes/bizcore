@@ -41,11 +41,13 @@
 
 import math
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import UserRole
+from app.core.config import settings
 from app.core.exceptions import NotFoundError, PermissionDeniedError
+from app.core.limiter import limiter
 from app.crud import inventory_movement as inventory_crud
 from app.dependencies import get_db, require_supervisor
 from app.models.user import User
@@ -65,7 +67,9 @@ router = APIRouter(prefix="/inventory", tags=["inventory"])
 # GET /api/v1/inventory — Listar movimientos (paginado)
 # ============================================================
 @router.get("/", response_model=InventoryMovementPaginated)
+@limiter.limit(settings.AUTHENTICATED_RATE_LIMIT)
 async def list_movements(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     page: int = Query(default=1, ge=1),  # mínimo página 1
     page_size: int = Query(default=10, ge=1, le=100),  # entre 1 y 100 registros
     product_id: int | None = None,
@@ -107,7 +111,9 @@ async def list_movements(
 # GET /api/v1/inventory/{movement_id} — Obtener un movimiento
 # ============================================================
 @router.get("/{movement_id}", response_model=InventoryMovementResponse)
+@limiter.limit(settings.AUTHENTICATED_RATE_LIMIT)
 async def get_movement(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     movement_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_supervisor),  # Supervisor+ puede ver inventario
@@ -132,7 +138,9 @@ async def get_movement(
 @router.post(
     "/", response_model=InventoryMovementResponse, status_code=status.HTTP_201_CREATED
 )
+@limiter.limit("30/minute")
 async def register_movement(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     data: InventoryMovementCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_supervisor),  # mínimo Supervisor para ENTRADA/SALIDA
