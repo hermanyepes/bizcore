@@ -189,22 +189,18 @@ async def update_order(
 
 async def cancel_order(db: AsyncSession, order_id: int) -> Order | None:
     """
-    Cancela un pedido cambiando su status a "CANCELADO".
+    Cancela un pedido cambiando su status a "CANCELADA".
+
+    Nota: el frontend usa PUT /{id}/status (máquina de estados completa).
+    Este helper es llamado por el endpoint DELETE /orders/{id}, que sigue
+    existiendo como acceso directo a la API. Ambos caminos producen el
+    mismo status "CANCELADA" para mantener datos consistentes en la BD.
 
     ¿Por qué no hay is_active=False como en los otros módulos?
     Los pedidos no desaparecen — siguen visibles en el historial
     de compras aunque estén cancelados. Un pedido cancelado es
     información de negocio valiosa: ¿cuántos pedidos se cancelaron
     este mes? ¿por qué proveedor?
-
-    El "equivalente" de desactivar un pedido es ponerle status="CANCELADO".
-    Sigue apareciendo en los listados, solo cambia su estado.
-
-    ¿Por qué no hace hard delete (borrar la fila)?
-    Dos razones:
-    1. El historial de compras es auditable — no se puede borrar.
-    2. OrderItems tienen ondelete="CASCADE": si borráramos el Order,
-       todos sus items desaparecerían también. Eso es pérdida de historial.
 
     ¿Por qué re-fetcheamos con get_order_by_id al final?
     Mismo motivo que en update_order: recargamos con selectinload
@@ -214,7 +210,7 @@ async def cancel_order(db: AsyncSession, order_id: int) -> Order | None:
     if order is None:
         return None
 
-    order.status = "CANCELADO"
+    order.status = "CANCELADA"
     await db.commit()
 
     # Re-fetcheamos para devolver el objeto completo con items cargados

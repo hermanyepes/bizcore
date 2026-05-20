@@ -253,15 +253,14 @@ async def update_order(
     current_user: User = Depends(require_employee),  # cualquier autenticado — row-level en Sesión 5
 ) -> OrderResponse:
     """
-    Actualiza las notas de un pedido.
+    Actualiza las notas de un pedido existente.
 
     PUT /api/v1/orders/1
-    Body: OrderUpdate (JSON) — solo `notes`.
+    Body: { "notes": "texto libre" }
     Requiere: JWT válido (cualquier rol)
 
-    DEPRECADO para cambios de status — usar PUT /{id}/status.
-    El campo `status` fue eliminado de OrderUpdate; los cambios de estado
-    deben hacerse exclusivamente a través del endpoint de máquina de estados.
+    Para cambios de estado usar PUT /api/v1/orders/{id}/status,
+    que implementa la máquina de estados con validación de transiciones.
 
     Si order_id no existe → 404.
     """
@@ -285,23 +284,18 @@ async def cancel_order(
     current_user: User = Depends(require_employee),  # cualquier autenticado — row-level en Sesión 5
 ) -> OrderResponse:
     """
-    Cancela un pedido cambiando su status a "CANCELADO".
+    Cancela un pedido cambiando su status a "CANCELADA".
 
     DELETE /api/v1/orders/1
     Requiere: JWT válido (cualquier rol)
 
-    Nota: las restricciones de row-level (el Empleado solo puede
-    cancelar sus propias órdenes) se implementan en el servicio
-    en la Sesión 5 del roadmap.
+    Acceso directo a cancelación sin pasar por la máquina de estados.
+    No registra audit_log ni valida cancel_reason — para eso usar
+    PUT /api/v1/orders/{id}/status con status="CANCELADA".
 
     ¿Por qué no borramos la fila de la BD?
-    Los pedidos de compra son registros auditables. Un pedido
-    cancelado sigue siendo información de negocio valiosa:
-    ¿cuántos pedidos se cancelaron? ¿con qué proveedor?
-    El historial debe conservarse intacto.
-
-    La respuesta devuelve el pedido con status="CANCELADO",
-    confirmando visualmente que fue cancelado.
+    Los pedidos son registros auditables. Un pedido cancelado sigue
+    siendo información de negocio valiosa. El historial se conserva.
 
     Si order_id no existe → 404.
     """

@@ -97,11 +97,11 @@ class OrderUpdate(BaseModel):
     """
     Datos que se pueden actualizar en un pedido existente.
 
-    PUT /api/v1/orders/{id}  (endpoint legacy)
+    PUT /api/v1/orders/{id}
 
-    DEPRECADO para cambios de status — usar PUT /{id}/status.
-    Solo permite actualizar las notas. Para cambios de estado usar
-    el endpoint que implementa la máquina de estados completa.
+    Solo permite modificar las notas libres del pedido.
+    Para cambios de estado usar PUT /api/v1/orders/{id}/status,
+    que valida transiciones y registra audit_log.
     """
 
     notes: str | None = Field(default=None, max_length=300)

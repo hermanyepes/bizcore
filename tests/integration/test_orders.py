@@ -591,8 +591,8 @@ async def test_cancelar_pedido_como_admin(
     order: Order,
 ) -> None:
     """
-    El administrador puede cancelar un pedido.
-    La respuesta devuelve el pedido con status="CANCELADO".
+    El administrador puede cancelar un pedido vía DELETE.
+    La respuesta devuelve el pedido con status="CANCELADA".
     El pedido sigue en la BD (no es un hard delete).
     """
     response = await client.delete(
@@ -602,7 +602,7 @@ async def test_cancelar_pedido_como_admin(
 
     assert response.status_code == 200
     data = response.json()
-    assert data["status"] == "CANCELADO"
+    assert data["status"] == "CANCELADA"
     assert data["id"] == order.id
 
     # Verificar que el pedido sigue en la BD (no fue borrado)
@@ -611,7 +611,7 @@ async def test_cancelar_pedido_como_admin(
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert get_response.status_code == 200
-    assert get_response.json()["status"] == "CANCELADO"
+    assert get_response.json()["status"] == "CANCELADA"
 
 
 async def test_cancelar_pedido_como_empleado(
