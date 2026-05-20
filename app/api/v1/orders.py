@@ -253,20 +253,15 @@ async def update_order(
     current_user: User = Depends(require_employee),  # cualquier autenticado — row-level en Sesión 5
 ) -> OrderResponse:
     """
-    Actualiza el status y/o las notas de un pedido.
+    Actualiza las notas de un pedido.
 
     PUT /api/v1/orders/1
-    Body: OrderUpdate (JSON)
+    Body: OrderUpdate (JSON) — solo `notes`.
     Requiere: JWT válido (cualquier rol)
 
-    Nota: las restricciones de row-level (el Empleado solo puede
-    actualizar sus propias órdenes en estado PENDIENTE) se implementan
-    en el servicio en la Sesión 5 del roadmap.
-
-    ¿Por qué no se pueden actualizar los ítems?
-    Los ítems son históricos. El precio y la cantidad quedan congelados
-    al momento de crear el pedido. Modificarlos equivale a falsificar
-    el registro de compra. Si el pedido fue mal → cancelar y crear uno nuevo.
+    DEPRECADO para cambios de status — usar PUT /{id}/status.
+    El campo `status` fue eliminado de OrderUpdate; los cambios de estado
+    deben hacerse exclusivamente a través del endpoint de máquina de estados.
 
     Si order_id no existe → 404.
     """

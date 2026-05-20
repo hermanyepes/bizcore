@@ -442,46 +442,42 @@ async def test_crear_pedido_lista_items_vacia_devuelve_422(
 
 
 # ============================================================
-# PUT /api/v1/orders/{id} — Actualizar pedido
+# PUT /api/v1/orders/{id} — Endpoint legacy (solo notas)
 # ============================================================
 
 
-async def test_actualizar_status_pedido_como_admin(
+async def test_actualizar_notas_pedido_como_admin(
     client: AsyncClient,
     admin_token: str,
     order: Order,
 ) -> None:
     """
-    El administrador puede cambiar el status de un pedido.
-    La respuesta devuelve el pedido con el status actualizado.
+    El endpoint legacy PUT /orders/{id} actualiza las notas correctamente.
+    El campo `status` fue eliminado — cambios de estado van por /{id}/status.
     """
     response = await client.put(
         f"/api/v1/orders/{order.id}",
-        json={"status": "COMPLETADO"},
+        json={"notes": "Nota actualizada por admin"},
         headers={"Authorization": f"Bearer {admin_token}"},
     )
 
     assert response.status_code == 200
     data = response.json()
-    assert data["status"] == "COMPLETADO"
+    assert data["notes"] == "Nota actualizada por admin"
     assert data["id"] == order.id
-    # Los ítems deben seguir presentes después del update
+    assert data["status"] == "PENDIENTE"  # el status no cambia con este endpoint
     assert len(data["items"]) == 1
 
 
-async def test_actualizar_pedido_como_empleado(
+async def test_actualizar_notas_pedido_como_empleado(
     client: AsyncClient,
     employee_token: str,
     order: Order,
 ) -> None:
-    """
-    El endpoint legacy PUT /orders/{id} no tiene row-level — es accesible
-    para cualquier autenticado. El row-level vive en el nuevo endpoint
-    PUT /orders/{id}/status implementado en la Sesión 5.
-    """
+    """El endpoint legacy no tiene row-level — accesible para cualquier autenticado."""
     response = await client.put(
         f"/api/v1/orders/{order.id}",
-        json={"status": "COMPLETADO"},
+        json={"notes": "Nota del empleado"},
         headers={"Authorization": f"Bearer {employee_token}"},
     )
     assert response.status_code == 200
@@ -494,10 +490,94 @@ async def test_actualizar_pedido_inexistente_devuelve_404(
     """Intentar actualizar un pedido que no existe devuelve 404."""
     response = await client.put(
         "/api/v1/orders/99999",
-        json={"status": "COMPLETADO"},
+        json={"notes": "Nota para pedido inexistente"},
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert response.status_code == 404
+
+
+# ============================================================
+# PUT /api/v1/orders/{id}/status — Máquina de estados
+# ============================================================
+
+
+async def test_transicion_pendiente_a_aprobada_como_admin(
+    client: AsyncClient,
+    admin_token: str,
+    order: Order,
+) -> None:
+    """
+    Admin aprueba un pedido PENDIENTE → 200 con status APROBADA.
+    Esta es la transición principal del flujo de compras.
+    """
+    response = await client.put(
+        f"/api/v1/orders/{order.id}/status",
+        json={"status": "APROBADA"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "APROBADA"
+    assert data["id"] == order.id
+
+
+async def test_cancelada_es_terminal_no_admite_nueva_transicion(
+    client: AsyncClient,
+    admin_token: str,
+    admin_user: User,
+    supplier: Supplier,
+    db: AsyncSession,
+) -> None:
+    """
+    Una orden en estado CANCELADA es terminal — cualquier intento de
+    transición devuelve 403, incluso con un status válido en el schema.
+    """
+    orden_cancelada = Order(
+        supplier_id=supplier.id,
+        created_by_id=admin_user.document_id,
+        status="CANCELADA",
+        created_at=datetime.now(UTC),
+    )
+    db.add(orden_cancelada)
+    await db.commit()
+    await db.refresh(orden_cancelada)
+
+    response = await client.put(
+        f"/api/v1/orders/{orden_cancelada.id}/status",
+        json={"status": "APROBADA"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 403
+
+
+async def test_entregada_es_terminal_no_admite_nueva_transicion(
+    client: AsyncClient,
+    admin_token: str,
+    admin_user: User,
+    supplier: Supplier,
+    db: AsyncSession,
+) -> None:
+    """
+    Una orden en estado ENTREGADA es terminal — cualquier intento de
+    transición devuelve 403.
+    """
+    orden_entregada = Order(
+        supplier_id=supplier.id,
+        created_by_id=admin_user.document_id,
+        status="ENTREGADA",
+        created_at=datetime.now(UTC),
+    )
+    db.add(orden_entregada)
+    await db.commit()
+    await db.refresh(orden_entregada)
+
+    response = await client.put(
+        f"/api/v1/orders/{orden_entregada.id}/status",
+        json={"status": "CANCELADA"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 403
 
 
 # ============================================================

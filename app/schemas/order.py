@@ -97,18 +97,13 @@ class OrderUpdate(BaseModel):
     """
     Datos que se pueden actualizar en un pedido existente.
 
-    PUT /api/v1/orders/{id}  (endpoint legacy — sin restricciones de rol)
+    PUT /api/v1/orders/{id}  (endpoint legacy)
 
-    ¿POR QUÉ SOLO STATUS Y NOTES?
-    Los ítems son inmutables una vez creados. Si ya se registró que
-    se pidieron 5 kilos de harina a $80.000, ese dato es histórico.
-    Modificarlo sería falsificar el historial.
-
-    Si el pedido fue mal, se cancela (status="CANCELADO") y se crea
-    uno nuevo. No se editan las líneas.
+    DEPRECADO para cambios de status — usar PUT /{id}/status.
+    Solo permite actualizar las notas. Para cambios de estado usar
+    el endpoint que implementa la máquina de estados completa.
     """
 
-    status: Literal["PENDIENTE", "COMPLETADO", "CANCELADO"] | None = None
     notes: str | None = Field(default=None, max_length=300)
 
 
