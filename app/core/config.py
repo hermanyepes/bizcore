@@ -90,10 +90,21 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: list[str] = []
 
     # --- Entorno de ejecución ---
-    # Controla comportamientos que solo deben estar activos en desarrollo.
+    # OBLIGATORIO: no tiene valor por defecto para forzar decisión explícita.
     # Valores válidos: "development" | "production"
     # En producción, deshabilita /docs y /redoc para evitar reconocimiento.
-    ENVIRONMENT: str = "development"
+    # Añadir al .env: ENVIRONMENT=development
+    ENVIRONMENT: str
+
+    @field_validator("ENVIRONMENT")
+    @classmethod
+    def validate_environment(cls, v: str) -> str:
+        if v not in ("development", "production"):
+            raise ValueError(
+                f"ENVIRONMENT debe ser 'development' o 'production', recibido: '{v}'. "
+                "Revisa tu archivo .env."
+            )
+        return v
 
     # --- Configuración del archivo .env ---
     # model_config le dice a pydantic-settings CÓMO leer la configuración.

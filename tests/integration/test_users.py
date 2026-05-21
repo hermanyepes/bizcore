@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
+from app.models.refresh_token import RefreshToken
 from app.models.user import User
 
 
@@ -784,6 +785,55 @@ async def test_delete_user_returns_deactivated_user(
     data = response.json()
     assert data["document_id"] == employee_user.document_id
     assert data["is_active"] is False
+
+
+@pytest.mark.asyncio
+async def test_deactivate_user_revokes_active_tokens(
+    client: AsyncClient,
+    admin_token: str,
+    employee_user: User,
+    db: AsyncSession,
+):
+    """HU-016: DELETE /users/{id} revoca todos los refresh tokens activos del usuario."""
+    # Guardar el ID como string antes de cualquier operación que pueda expirar el objeto ORM
+    user_id = employee_user.document_id
+
+    # El empleado hace login → genera un refresh token activo en BD
+    login_response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "empleado@test.com", "password": "Empleado1234"},
+    )
+    assert login_response.status_code == 200
+
+    # Verificar que el token existe y está activo
+    result = await db.execute(
+        select(RefreshToken).where(
+            RefreshToken.user_id == user_id,
+            RefreshToken.is_revoked == False,  # noqa: E712
+        )
+    )
+    tokens_before = result.scalars().all()
+    assert len(tokens_before) >= 1
+
+    # Admin desactiva al usuario
+    response = await client.delete(
+        f"/api/v1/users/{user_id}",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 200
+    assert response.json()["is_active"] is False
+
+    # Todos los refresh tokens del usuario deben estar revocados.
+    # expire_all() no es necesario — revoke_all_user_tokens() ya hizo commit,
+    # y una nueva query siempre ve el estado actual de la BD.
+    result = await db.execute(
+        select(RefreshToken).where(
+            RefreshToken.user_id == user_id,
+            RefreshToken.is_revoked == False,  # noqa: E712
+        )
+    )
+    tokens_after = result.scalars().all()
+    assert len(tokens_after) == 0, "Al desactivar un usuario sus refresh tokens deben quedar revocados"
 
 
 @pytest.mark.asyncio

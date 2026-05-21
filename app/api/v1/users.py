@@ -333,6 +333,9 @@ async def delete_user(
         )
 
     user = await user_service.delete(db, document_id)
+    # HU-016: al desactivar, revocar todos los refresh tokens activos
+    # para que el dispositivo del usuario quede sin acceso inmediatamente.
+    await revoke_all_user_tokens(db, document_id)
     return UserResponse.model_validate(user)
 
 
