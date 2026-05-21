@@ -106,7 +106,10 @@ SECRET_KEY=your_random_secret_key_here
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=15
 ALLOWED_ORIGINS=["http://localhost:4200"]
+ENVIRONMENT=development
 ```
+
+> `ENVIRONMENT` is required — the app refuses to start without it. Use `development` locally and `production` on any deployed instance. In production, `/docs` and `/redoc` are automatically disabled.
 
 Generate a secure `SECRET_KEY`:
 
@@ -128,7 +131,7 @@ uvicorn app.main:app --reload
 ```
 
 API available at: `http://localhost:8000`
-Interactive docs: `http://localhost:8000/docs`
+Interactive docs: `http://localhost:8000/docs` (only when `ENVIRONMENT=development`)
 
 ---
 
@@ -147,7 +150,7 @@ python -m pytest --cov=app --cov-report=term-missing
 python -m pytest tests/integration/test_orders.py -v
 ```
 
-**145 tests** covering happy paths, error cases (401, 403, 404, 409, 422), role-based access control, and security edge cases (JWT manipulation, privilege escalation attempts).
+**287 tests** covering happy paths, error cases (401, 403, 404, 409, 422), role-based access control, and security edge cases (JWT manipulation, privilege escalation attempts, rate limiting, CSP headers, token revocation).
 
 ---
 
@@ -174,8 +177,12 @@ curl http://localhost:8000/api/v1/users/me \
 
 | Role | Access |
 |---|---|
-| `Administrador` | Full access to all endpoints |
-| `Empleado` | Read-only on most resources; can create inventory movements and orders |
+| `Superadmin` | Full system access. Created by seed script only — not assignable from UI. |
+| `Administrador` | Full CRUD on users (except Superadmin), products, inventory, suppliers, orders, and dashboard. Cannot promote to Admin or Superadmin. |
+| `Supervisor` | Products, inventory, suppliers, orders, and operational reports. No access to user management. |
+| `Empleado` | Creates and views own orders only. Sees products without cost/margin. No access to users, suppliers, inventory, or dashboard. |
+
+Role enforcement is implemented at two levels: backend dependency injection (`require_roles()` factory) and frontend route guards (`roleGuard`). Deactivating a user immediately revokes all active sessions.
 
 ### Pagination
 
@@ -227,4 +234,10 @@ backend/
 - Login returns the same error for wrong email and wrong password — prevents user enumeration
 - `password_hash` is never exposed in any response schema
 - CORS origins are configured via environment variable, not hardcoded
-- `is_active` check on every authenticated request — deactivated users cannot use valid tokens
+- Deactivating a user revokes all active refresh tokens immediately — no grace period
+- **Refresh token rotation** with `SELECT FOR UPDATE` prevents race conditions on concurrent refresh requests
+- **Rate limiting** on all authenticated endpoints: 20 req/min for reads, 30 req/min for writes (via slowapi)
+- **Content Security Policy** header on every response — `default-src 'self'`, `script-src 'self'`, `frame-ancestors 'none'`
+- `/docs` and `/redoc` are disabled when `ENVIRONMENT=production`
+- `detect-secrets` pre-commit hook blocks any commit that contains a credential or token
+- Seed admin password is randomly generated at runtime — no hardcoded credentials anywhere in the codebase
