@@ -79,6 +79,16 @@ class Supplier(Base):
     address: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # ----------------------------------------------------------
+    # NIT — Número de Identificación Tributaria colombiano
+    #
+    # Formato: "XXXXXXXXX" (9-11 dígitos) o "XXXXXXXXX-D" (con DV).
+    # El dígito de verificación se calcula con el algoritmo DIAN
+    # (módulo 11 con pesos [3,7,13,17,19,23,29,37,41...]).
+    # nullable=True: campo nuevo sin retrocompatibilidad forzada.
+    # ----------------------------------------------------------
+    nit: Mapped[str | None] = mapped_column(String(15), nullable=True)
+
+    # ----------------------------------------------------------
     # Soft delete + auditoría — mismo patrón que User y Product
     #
     # is_active=False en vez de DELETE: el historial queda intacto.

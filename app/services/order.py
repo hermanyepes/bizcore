@@ -47,15 +47,20 @@
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import UserRole
 from app.core.exceptions import (
     InactiveResourceError,
     InsufficientStockError,
     NotFoundError,
+    PermissionDeniedError,
 )
+from app.crud import order as order_crud
 from app.crud.order import get_order_by_id
 from app.crud.product import get_product_by_id
 from app.crud.supplier import get_supplier_by_id
+from app.models.audit_log import AuditLog
 from app.models.order import Order, OrderItem
+from app.models.user import User
 from app.schemas.order import OrderCreate
 
 
@@ -204,3 +209,128 @@ async def create_order(
     # con todos sus ítems listos para serializar a JSON.
     # ----------------------------------------------------------
     return await get_order_by_id(db, order.id)  # type: ignore[return-value]
+
+
+# ============================================================
+# list_orders_for_user — Row-level security en listado (HU-043)
+# ============================================================
+
+
+async def list_orders_for_user(
+    db: AsyncSession,
+    current_user: User,
+    skip: int,
+    limit: int,
+    supplier_id: int | None = None,
+    status: str | None = None,
+) -> tuple[list[Order], int]:
+    """
+    Devuelve pedidos filtrados según el rol del usuario.
+
+    Empleado → solo sus propias órdenes (WHERE created_by_id = document_id).
+    Supervisor / Admin / Superadmin → todas las órdenes sin restricción.
+    """
+    created_by_filter = None
+    if current_user.role == UserRole.EMPLOYEE:
+        created_by_filter = current_user.document_id
+
+    return await order_crud.get_orders(
+        db,
+        skip=skip,
+        limit=limit,
+        supplier_id=supplier_id,
+        status=status,
+        created_by_id=created_by_filter,
+    )
+
+
+# ============================================================
+# update_status — Máquina de estados + row-level (HU-046)
+# ============================================================
+
+# Transiciones válidas según el diagrama en docs/diagramas/flujo-orden.md
+_VALID_TRANSITIONS: dict[str, set[str]] = {
+    "PENDIENTE": {"APROBADA", "CANCELADA"},
+    "APROBADA": {"ENTREGADA", "CANCELADA"},
+    "ENTREGADA": set(),
+    "CANCELADA": set(),
+}
+
+
+async def update_status(
+    db: AsyncSession,
+    order_id: int,
+    new_status: str,
+    current_user: User,
+    cancel_reason: str | None = None,
+) -> Order:
+    """
+    Cambia el estado de una orden verificando permisos y transición válida.
+
+    Empleado:
+      - Solo puede ejecutar PENDIENTE → CANCELADA.
+      - Solo sobre su propia orden (created_by_id == document_id).
+      - cancel_reason obligatorio.
+
+    Supervisor / Admin / Superadmin:
+      - Puede ejecutar cualquier transición válida de la máquina de estados.
+      - cancel_reason opcional (recomendado para CANCELADA).
+
+    Cuando status pasa a CANCELADA, se registra un audit_log con el
+    before/after del status y la cancel_reason.
+    """
+    order = await get_order_by_id(db, order_id)
+    if order is None:
+        raise NotFoundError("Orden", order_id)
+
+    # ----------------------------------------------------------
+    # Restricciones de row-level para Empleado
+    # ----------------------------------------------------------
+    if current_user.role == UserRole.EMPLOYEE:
+        if order.created_by_id != current_user.document_id:
+            raise PermissionDeniedError("No tienes permisos sobre esta orden")
+        if new_status != "CANCELADA":
+            raise PermissionDeniedError(
+                "El Empleado solo puede cancelar sus propias órdenes pendientes"
+            )
+        if order.status != "PENDIENTE":
+            raise PermissionDeniedError(
+                "Solo se pueden cancelar órdenes en estado PENDIENTE"
+            )
+        if not cancel_reason:
+            raise PermissionDeniedError(
+                "Se requiere cancel_reason al cancelar una orden"
+            )
+
+    # ----------------------------------------------------------
+    # Validar que la transición sea válida según la máquina de estados
+    # ----------------------------------------------------------
+    allowed = _VALID_TRANSITIONS.get(order.status, set())
+    if new_status not in allowed:
+        raise PermissionDeniedError(
+            f"Transición inválida: {order.status} → {new_status}"
+        )
+
+    old_status = order.status
+    order.status = new_status
+    if cancel_reason is not None:
+        order.cancel_reason = cancel_reason
+
+    # ----------------------------------------------------------
+    # Audit log cuando la orden pasa a CANCELADA
+    # ----------------------------------------------------------
+    if new_status == "CANCELADA":
+        audit = AuditLog(
+            user_id=current_user.document_id,
+            action="update",
+            resource="order",
+            resource_id=str(order_id),
+            changes={
+                "status": {"before": old_status, "after": new_status},
+                "cancel_reason": cancel_reason,
+            },
+        )
+        db.add(audit)
+
+    await db.commit()
+    return await get_order_by_id(db, order_id)  # type: ignore[return-value]

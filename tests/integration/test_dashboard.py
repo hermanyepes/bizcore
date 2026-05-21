@@ -12,7 +12,8 @@
 #   2. BD casi vacía → ceros y listas vacías (sin errores)
 #   3. Con datos reales → métricas correctas
 #   4. Producto con stock < 10 → aparece en low_stock_products
-#   5. Empleado (no solo admin) → puede ver el tablero
+#   5. Empleado → recibe 403 (HU-090: no puede ver métricas del negocio)
+#   6. Supervisor → puede ver el tablero (rol mínimo permitido)
 #
 # FIXTURES QUE SE USAN (definidas en tests/conftest.py):
 #   client        → cliente HTTP con BD de prueba inyectada
@@ -207,25 +208,46 @@ async def test_get_summary_low_stock_products(
 
 
 # ============================================================
-# Test 5: empleado también puede ver el dashboard
+# Test 5: empleado NO puede ver el dashboard → 403
 # ============================================================
-async def test_get_summary_employee_can_access(
+async def test_get_summary_employee_cannot_access(
     client: AsyncClient,
     employee_token: str,
 ) -> None:
     """
-    Un usuario con rol Empleado puede ver el dashboard.
+    Un usuario con rol Empleado NO puede ver el dashboard — recibe 403.
+    La matriz de permisos (sección 2.6) prohíbe al Empleado ver métricas
+    operativas y financieras (valor de inventario, conteo global de órdenes,
+    lista de stock bajo).
 
-    El endpoint acepta cualquier JWT válido, sin importar el rol.
-    Este test confirma que no hay restricción de rol accidental
-    (por ejemplo, si alguien agrega un check de Administrador).
-
-    Solo verificamos el status code — el contenido ya lo probamos
-    en los tests anteriores.
+    El test anterior esperaba 200, lo cual validaba el comportamiento incorrecto.
+    Este cambio cierra HU-090 (brecha RBAC detectada en Sesión 5).
     """
     response = await client.get(
         "/api/v1/dashboard/summary",
         headers={"Authorization": f"Bearer {employee_token}"},
+    )
+
+    assert response.status_code == 403
+
+
+# ============================================================
+# Test 6: supervisor puede ver el dashboard → 200
+# ============================================================
+async def test_get_summary_supervisor_can_access(
+    client: AsyncClient,
+    supervisor_token: str,
+) -> None:
+    """
+    Un usuario con rol Supervisor puede ver el dashboard.
+
+    El Supervisor tiene acceso a reportes operativos según la
+    matriz de permisos (sección 2.6). Solo verificamos el status
+    code — el contenido ya lo cubre test_get_summary_with_data.
+    """
+    response = await client.get(
+        "/api/v1/dashboard/summary",
+        headers={"Authorization": f"Bearer {supervisor_token}"},
     )
 
     assert response.status_code == 200

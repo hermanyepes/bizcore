@@ -74,22 +74,22 @@ async def test_listar_movimientos_como_admin(
     assert body["total"] >= 1
 
 
-async def test_listar_movimientos_como_empleado(
+async def test_listar_movimientos_como_empleado_devuelve_403(
     client: httpx.AsyncClient,
     employee_token: str,
     inventory_movement: InventoryMovement,
 ):
     """
-    GET /inventory/ con token de Empleado también devuelve 200.
+    GET /inventory/ con token de Empleado devuelve 403.
 
-    Los empleados también consultan el historial de inventario.
-    No hay restricción de rol para lectura.
+    Según la matriz de permisos, el módulo de inventario requiere
+    rol Supervisor o superior. Los Empleados no tienen acceso.
     """
     response = await client.get(
         "/api/v1/inventory/",
         headers={"Authorization": f"Bearer {employee_token}"},
     )
-    assert response.status_code == 200
+    assert response.status_code == 403
 
 
 async def test_listar_movimientos_sin_token_devuelve_401(client: httpx.AsyncClient):
@@ -285,23 +285,23 @@ async def test_registrar_ajuste_fija_stock(
     assert product_response.json()["stock"] == 42  # valor absoluto, no suma/resta
 
 
-async def test_registrar_movimiento_como_empleado(
+async def test_registrar_movimiento_como_empleado_devuelve_403(
     client: httpx.AsyncClient,
     employee_token: str,
     product: Product,
 ):
     """
-    POST /inventory/ con token de Empleado también devuelve 201.
+    POST /inventory/ con token de Empleado devuelve 403.
 
-    Los empleados son quienes físicamente reciben y despachan mercancía.
-    Restringir esto al Administrador rompería el flujo real del negocio.
+    Según la matriz de permisos, registrar movimientos de inventario
+    requiere rol Supervisor o superior. Los Empleados no tienen acceso.
     """
     response = await client.post(
         "/api/v1/inventory/",
         json={"product_id": product.id, "movement_type": "ENTRADA", "quantity": 10},
         headers={"Authorization": f"Bearer {employee_token}"},
     )
-    assert response.status_code == 201
+    assert response.status_code == 403
 
 
 async def test_registrar_movimiento_sin_token_devuelve_401(

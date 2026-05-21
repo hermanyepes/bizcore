@@ -64,11 +64,11 @@ class AuditLog(Base):
     # ----------------------------------------------------------
     # ¿Qué acción se realizó?
     #
-    # Solo tres valores posibles: "create" | "update" | "delete"
-    # No usamos un Enum de PostgreSQL para mantener la migración
-    # simple — la validación del valor se hará en el CRUD.
+    # Valores posibles: "create" | "update" | "delete" | "force_logout"
+    # String(50) para acomodar acciones compuestas con guion bajo.
+    # El original era String(10), que reventaba con "force_logout" (12 chars).
     # ----------------------------------------------------------
-    action: Mapped[str] = mapped_column(String(10), nullable=False)
+    action: Mapped[str] = mapped_column(String(50), nullable=False)
 
     # ----------------------------------------------------------
     # ¿Sobre qué módulo?

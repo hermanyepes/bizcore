@@ -18,11 +18,59 @@
 #
 # ============================================================
 
+import re
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.schemas.common import PaginatedResponse
+
+# ============================================================
+# Validador NIT colombiano — algoritmo oficial DIAN
+# ============================================================
+#
+# Pesos para el módulo 11, aplicados de derecha a izquierda
+# sobre cada dígito del NIT (sin el DV).
+#
+# Ejemplo: NIT 899999230, DV esperado = 7
+#   0*3 + 3*7 + 2*13 + 9*17 + 9*19 + 9*23 + 9*29 + 9*37 + 8*41
+#   = 0 + 21 + 26 + 153 + 171 + 207 + 261 + 333 + 328 = 1500
+#   1500 % 11 = 4  →  11 - 4 = 7 ✓
+#
+_NIT_WEIGHTS = [3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71]
+_NIT_PATTERN = re.compile(r"^(\d{9,11})(?:-(\d))?$")
+
+
+def _compute_nit_dv(digits: str) -> int:
+    """Calcula el dígito de verificación según el algoritmo DIAN módulo 11."""
+    total = sum(int(d) * w for d, w in zip(reversed(digits), _NIT_WEIGHTS))
+    rem = total % 11
+    return rem if rem <= 1 else 11 - rem
+
+
+def _validate_nit_value(v: str | None) -> str | None:
+    """
+    Valida que el NIT tenga el formato correcto y, si incluye DV, que sea correcto.
+    Usado como validator compartido en SupplierCreate y SupplierUpdate.
+    """
+    if v is None:
+        return v
+    v = v.strip()
+    match = _NIT_PATTERN.match(v)
+    if not match:
+        raise ValueError(
+            "NIT inválido: debe tener 9-11 dígitos, opcionalmente seguido de '-' "
+            "y el dígito de verificación (ej: 800123456 o 800123456-7)."
+        )
+    body, dv = match.group(1), match.group(2)
+    if dv is not None:
+        expected = _compute_nit_dv(body)
+        if expected != int(dv):
+            raise ValueError(
+                f"Dígito de verificación incorrecto. "
+                f"Para el NIT {body} el DV correcto es {expected}."
+            )
+    return v
 
 
 class SupplierCreate(BaseModel):
@@ -48,6 +96,12 @@ class SupplierCreate(BaseModel):
 
     phone: str | None = Field(default=None, max_length=20)
     address: str | None = Field(default=None, max_length=255)
+    nit: str | None = Field(default=None, max_length=15)
+
+    @field_validator("nit")
+    @classmethod
+    def validate_nit(cls, v: str | None) -> str | None:
+        return _validate_nit_value(v)
 
 
 class SupplierUpdate(BaseModel):
@@ -66,10 +120,16 @@ class SupplierUpdate(BaseModel):
     contact_email: EmailStr | None = Field(default=None)
     phone: str | None = Field(default=None, max_length=20)
     address: str | None = Field(default=None, max_length=255)
+    nit: str | None = Field(default=None, max_length=15)
 
     # is_active=False activa el soft delete desde el endpoint de actualización.
     # Mismo patrón que ProductUpdate: un solo endpoint maneja edición y desactivación.
     is_active: bool | None = None
+
+    @field_validator("nit")
+    @classmethod
+    def validate_nit(cls, v: str | None) -> str | None:
+        return _validate_nit_value(v)
 
 
 class SupplierResponse(BaseModel):
@@ -91,6 +151,7 @@ class SupplierResponse(BaseModel):
     contact_email: str | None
     phone: str | None
     address: str | None
+    nit: str | None
     is_active: bool
     created_at: datetime
     updated_at: datetime | None  # NULL si nunca fue actualizado

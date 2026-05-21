@@ -30,7 +30,7 @@ class ProductCreate(BaseModel):
     Datos necesarios para registrar un producto nuevo.
 
     POST /api/v1/products
-    Solo el Administrador puede crear productos (validado en el endpoint).
+    Solo el Supervisor+ puede crear productos (validado en el endpoint).
 
     Campos ausentes deliberadamente:
     - `id`: lo genera PostgreSQL automáticamente (autoincrement)
@@ -53,6 +53,11 @@ class ProductCreate(BaseModel):
     stock: int = Field(default=0, ge=0)
 
     category: str | None = Field(default=None, max_length=60)
+
+    # cost_price y margin: opcionales al crear. El Supervisor registra
+    # el costo de compra para calcular el margen. El Empleado no los envía.
+    cost_price: int | None = Field(default=None, gt=0)
+    margin: int | None = Field(default=None, ge=0)
 
 
 class ProductUpdate(BaseModel):
@@ -77,23 +82,19 @@ class ProductUpdate(BaseModel):
     # is_active permite hacer soft delete desde el endpoint de actualización:
     # enviar is_active=False desactiva el producto sin borrarlo de la BD.
     is_active: bool | None = None
+    cost_price: int | None = Field(default=None, gt=0)
+    margin: int | None = Field(default=None, ge=0)
 
 
-class ProductResponse(BaseModel):
+class ProductBaseResponse(BaseModel):
     """
-    Datos del producto que la API devuelve al cliente.
+    Campos del producto visibles para TODOS los roles autenticados.
 
-    GET /api/v1/products
-    GET /api/v1/products/{id}
+    GET /api/v1/products       → Empleado recibe esta versión
+    GET /api/v1/products/{id}  → ídem
 
-    Incluye `id` y `created_at` porque ya los generó la BD.
-    Incluye todos los campos — los productos no tienen datos sensibles
-    que ocultar (a diferencia de User que tiene password_hash).
-
-    model_config = ConfigDict(from_attributes=True):
-    Le dice a Pydantic que puede construir este schema desde un objeto
-    SQLAlchemy (que tiene atributos, no es un diccionario).
-    Sin esto, Pydantic intentaría leerlo como dict y fallaría.
+    Excluye deliberadamente cost_price y margin — son datos financieros
+    internos que el Empleado no necesita para operar. Ver HU-022.
     """
 
     id: int
@@ -104,13 +105,30 @@ class ProductResponse(BaseModel):
     category: str | None
     is_active: bool
     created_at: datetime
-    updated_at: datetime | None  # NULL si nunca fue actualizado
+    updated_at: datetime | None
 
-    # Permite crear este schema desde un objeto SQLAlchemy:
-    # ProductResponse.model_validate(product_obj)
     model_config = ConfigDict(from_attributes=True)
 
 
+class ProductDetailResponse(ProductBaseResponse):
+    """
+    Campos completos del producto — para Supervisor, Administrador y Superadmin.
+
+    Hereda todos los campos de ProductBaseResponse y añade:
+    - cost_price: costo de compra del producto (confidencial)
+    - margin: margen calculado (confidencial)
+
+    El endpoint devuelve esta clase cuando current_user.role != "Empleado".
+    """
+
+    cost_price: int | None = None
+    margin: int | None = None
+
+
+# Alias de compatibilidad — lo usan los endpoints de POST/PUT/DELETE
+# que siempre responden con el detalle completo (solo los accede Supervisor+).
+ProductResponse = ProductDetailResponse
+
 # Especialización del schema genérico para productos.
-# Equivale a una clase con items: list[ProductResponse], total, page, page_size, pages.
-ProductPaginated = PaginatedResponse[ProductResponse]
+# Equivale a una clase con items: list[ProductDetailResponse], total, page, page_size, pages.
+ProductPaginated = PaginatedResponse[ProductDetailResponse]

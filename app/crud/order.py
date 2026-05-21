@@ -69,28 +69,25 @@ async def get_orders(
     limit: int = 10,
     supplier_id: int | None = None,
     status: str | None = None,
+    created_by_id: str | None = None,
 ) -> tuple[list[Order], int]:
     """
     Devuelve una página de pedidos + el total de registros.
 
     Filtros opcionales:
     - supplier_id: filtra pedidos de un proveedor específico
-    - status: 'PENDIENTE' | 'RECIBIDO' | 'CANCELADO' | None (todos)
-
-    Ambos filtros son independientes y se pueden combinar:
-      GET /api/v1/orders?supplier_id=3&status=PENDIENTE
-      → solo pedidos pendientes del proveedor 3
+    - status: 'PENDIENTE' | 'APROBADA' | 'ENTREGADA' | 'CANCELADA' | None (todos)
+    - created_by_id: row-level security — limita al usuario propietario (HU-043)
 
     Los pedidos se ordenan del más reciente al más antiguo (created_at DESC).
     """
-    # Construir la lista de filtros opcionales.
-    # get_paginated los aplica a base_query y count_query en el mismo loop.
     filters = []
     if supplier_id is not None:
         filters.append(Order.supplier_id == supplier_id)
-    # status: 'PENDIENTE' | 'RECIBIDO' | 'CANCELADO'
     if status is not None:
         filters.append(Order.status == status)
+    if created_by_id is not None:
+        filters.append(Order.created_by_id == created_by_id)
 
     # selectinload carga los ítems de cada pedido en una segunda query.
     # Solo aplica a base_query — el COUNT nunca necesita cargar relaciones.
@@ -192,22 +189,18 @@ async def update_order(
 
 async def cancel_order(db: AsyncSession, order_id: int) -> Order | None:
     """
-    Cancela un pedido cambiando su status a "CANCELADO".
+    Cancela un pedido cambiando su status a "CANCELADA".
+
+    Nota: el frontend usa PUT /{id}/status (máquina de estados completa).
+    Este helper es llamado por el endpoint DELETE /orders/{id}, que sigue
+    existiendo como acceso directo a la API. Ambos caminos producen el
+    mismo status "CANCELADA" para mantener datos consistentes en la BD.
 
     ¿Por qué no hay is_active=False como en los otros módulos?
     Los pedidos no desaparecen — siguen visibles en el historial
     de compras aunque estén cancelados. Un pedido cancelado es
     información de negocio valiosa: ¿cuántos pedidos se cancelaron
     este mes? ¿por qué proveedor?
-
-    El "equivalente" de desactivar un pedido es ponerle status="CANCELADO".
-    Sigue apareciendo en los listados, solo cambia su estado.
-
-    ¿Por qué no hace hard delete (borrar la fila)?
-    Dos razones:
-    1. El historial de compras es auditable — no se puede borrar.
-    2. OrderItems tienen ondelete="CASCADE": si borráramos el Order,
-       todos sus items desaparecerían también. Eso es pérdida de historial.
 
     ¿Por qué re-fetcheamos con get_order_by_id al final?
     Mismo motivo que en update_order: recargamos con selectinload
@@ -217,7 +210,7 @@ async def cancel_order(db: AsyncSession, order_id: int) -> Order | None:
     if order is None:
         return None
 
-    order.status = "CANCELADO"
+    order.status = "CANCELADA"
     await db.commit()
 
     # Re-fetcheamos para devolver el objeto completo con items cargados

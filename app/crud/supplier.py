@@ -111,6 +111,7 @@ async def create_supplier(db: AsyncSession, data: SupplierCreate) -> Supplier:
         contact_email=data.contact_email,
         phone=data.phone,
         address=data.address,
+        nit=data.nit,
         # id y created_at los genera PostgreSQL automáticamente
         # is_active empieza en True por el default del modelo
     )

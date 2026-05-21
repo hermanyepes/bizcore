@@ -10,28 +10,43 @@
 # Solo sabe:
 #   - Qué pedido llegó (parámetros de la request)
 #   - Si el cliente tiene carnet (JWT validado por Depends)
-#   - Si el cliente tiene permiso (rol: cualquiera vs solo admin)
+#   - Si el cliente tiene permiso (rol: cualquiera vs Supervisor+ vs Admin+)
 #   - A quién llamar en la cocina (product_service)
 #   - Cómo presentar el plato (response_model filtra los datos)
 #
 # FLUJO DE UNA REQUEST TÍPICA:
 #   1. FastAPI recibe POST /api/v1/products
-#   2. Ejecuta las dependencias: get_db() → require_admin()
-#   3. require_admin() verifica JWT y rol → si falla: 401 o 403
+#   2. Ejecuta las dependencias: get_db() → require_supervisor()
+#   3. require_supervisor() verifica JWT y rol → si falla: 401 o 403
 #   4. Llama al endpoint con db + admin ya resueltos
 #   5. El endpoint delega en product_service → service llama al crud
 #   6. FastAPI serializa la respuesta con response_model
 #
+# PERMISOS POR ACCIÓN (ver docs/roles/matriz-permisos.md sección 2.2):
+#   GET  /products     → cualquier autenticado (get_current_user)
+#   GET  /products/{id}→ cualquier autenticado
+#   POST /products     → Supervisor+ (require_supervisor)
+#   PUT  /products/{id}→ Supervisor+ (require_supervisor)
+#   DELETE /products/{id}→ Admin+  (require_admin) — soft delete es irreversible
+#
 # ============================================================
 
-from fastapi import APIRouter, Depends, Query, status
+import math
+
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_current_user, get_db, require_admin
+from app.constants import UserRole
+from app.core.config import settings
+from app.core.limiter import limiter
+from app.crud import product as product_crud
+from app.dependencies import get_current_user, get_db, require_admin, require_supervisor
 from app.models.user import User
+from app.schemas.common import PaginatedResponse
 from app.schemas.product import (
+    ProductBaseResponse,
     ProductCreate,
-    ProductPaginated,
+    ProductDetailResponse,
     ProductResponse,
     ProductUpdate,
 )
@@ -46,67 +61,87 @@ router = APIRouter(prefix="/products", tags=["products"])
 # ============================================================
 # GET /api/v1/products — Listar productos (paginado)
 # ============================================================
-@router.get("/", response_model=ProductPaginated)
+@router.get("/")
+@limiter.limit(settings.AUTHENTICATED_RATE_LIMIT)
 async def list_products(
-    page: int = Query(default=1, ge=1),  # mínimo página 1
-    page_size: int = Query(default=10, ge=1, le=100),  # entre 1 y 100 registros
-    is_active: bool | None = Query(default=None),  # True/False/None (todos)
-    category: str | None = Query(default=None),  # ej: 'Bebidas', 'Snacks'
+    request: Request,  # requerido por slowapi para leer la IP del cliente
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
+    is_active: bool | None = Query(default=None),
+    category: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),  # cualquier usuario autenticado
-) -> ProductPaginated:
+    current_user: User = Depends(get_current_user),
+):
     """
     Lista productos con paginación y filtros opcionales.
 
-    GET /api/v1/products?page=1&page_size=10
-    GET /api/v1/products?is_active=true              ← catálogo activo
-    GET /api/v1/products?category=Bebidas&is_active=true
-    GET /api/v1/products?is_active=false             ← productos desactivados (admin)
+    Column-level security (HU-022):
+    - Empleado     → ProductBaseResponse (sin cost_price ni margin)
+    - Supervisor+  → ProductDetailResponse (con cost_price y margin)
 
-    Filtros opcionales — si no se envían, devuelve todos los registros.
+    GET /api/v1/products?page=1&page_size=10
+    GET /api/v1/products?is_active=true
+    GET /api/v1/products?category=Bebidas&is_active=true
     """
-    return await product_service.list(db, page, page_size, is_active, category)
+    skip = (page - 1) * page_size
+    products, total = await product_crud.get_products(
+        db, skip=skip, limit=page_size, is_active=is_active, category=category
+    )
+    pages = math.ceil(total / page_size) if total > 0 else 0
+
+    if current_user.role == UserRole.EMPLOYEE:
+        items = [ProductBaseResponse.model_validate(p) for p in products]
+    else:
+        items = [ProductDetailResponse.model_validate(p) for p in products]
+
+    return PaginatedResponse(
+        items=items, total=total, page=page, page_size=page_size, pages=pages
+    )
 
 
 # ============================================================
 # GET /api/v1/products/{id} — Obtener un producto
 # ============================================================
-@router.get("/{product_id}", response_model=ProductResponse)
+@router.get("/{product_id}")
+@limiter.limit(settings.AUTHENTICATED_RATE_LIMIT)
 async def get_product(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     product_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> ProductResponse:
+) -> ProductBaseResponse | ProductDetailResponse:
     """
     Devuelve los datos de un producto específico.
 
-    GET /api/v1/products/1
+    Column-level security (HU-022):
+    - Empleado     → ProductBaseResponse (sin cost_price ni margin)
+    - Supervisor+  → ProductDetailResponse (con cost_price y margin)
 
-    ¿Por qué product_id es int y document_id era str?
-    Porque el id de Product es autoincremental (entero).
-    FastAPI automáticamente convierte "1" (string de la URL) a int.
-    Si alguien envía /products/abc, FastAPI devuelve 422 antes de
-    llegar al endpoint — "abc" no es un entero válido.
+    GET /api/v1/products/1
     """
     product = await product_service.get(db, product_id)
-    return ProductResponse.model_validate(product)
+    if current_user.role == UserRole.EMPLOYEE:
+        return ProductBaseResponse.model_validate(product)
+    return ProductDetailResponse.model_validate(product)
 
 
 # ============================================================
-# POST /api/v1/products — Crear producto (solo Administrador)
+# POST /api/v1/products — Crear producto (Supervisor o superior)
 # ============================================================
 @router.post("/", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 async def create_product(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     data: ProductCreate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),  # solo Administrador puede crear
+    current_user: User = Depends(require_supervisor),  # Supervisor, Admin o Superadmin
 ) -> ProductResponse:
     """
     Registra un nuevo producto en el catálogo.
 
     POST /api/v1/products
     Body: ProductCreate (JSON)
-    Requiere: JWT con rol Administrador
+    Requiere: JWT con rol Supervisor, Administrador o Superadmin
 
     ¿Por qué 201 y no 200?
     200 OK      → éxito, el recurso ya existía
@@ -118,21 +153,23 @@ async def create_product(
 
 
 # ============================================================
-# PUT /api/v1/products/{id} — Actualizar producto (solo Administrador)
+# PUT /api/v1/products/{id} — Actualizar producto (Supervisor o superior)
 # ============================================================
 @router.put("/{product_id}", response_model=ProductResponse)
+@limiter.limit("30/minute")
 async def update_product(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     product_id: int,
     data: ProductUpdate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    current_user: User = Depends(require_supervisor),  # Supervisor, Admin o Superadmin
 ) -> ProductResponse:
     """
     Actualiza los datos de un producto. Solo se modifican los campos enviados.
 
     PUT /api/v1/products/1
     Body: ProductUpdate (solo los campos que quieres cambiar)
-    Requiere: JWT con rol Administrador
+    Requiere: JWT con rol Supervisor, Administrador o Superadmin
 
     Ejemplos de uso:
     - Subir el precio:           {"price": 28000}
@@ -145,19 +182,25 @@ async def update_product(
 
 
 # ============================================================
-# DELETE /api/v1/products/{id} — Desactivar producto (solo Administrador)
+# DELETE /api/v1/products/{id} — Desactivar producto (solo Admin+)
 # ============================================================
 @router.delete("/{product_id}", response_model=ProductResponse)
+@limiter.limit("30/minute")
 async def delete_product(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     product_id: int,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),  # solo Admin o Superadmin — soft delete irreversible
 ) -> ProductResponse:
     """
     Desactiva un producto (soft delete — no borra el registro de la BD).
 
     DELETE /api/v1/products/1
-    Requiere: JWT con rol Administrador
+    Requiere: JWT con rol Administrador o Superadmin
+
+    ¿Por qué DELETE requiere más permiso que POST/PUT?
+    Desactivar un producto lo oculta del catálogo para todos los usuarios.
+    Es una decisión más impactante que editar un campo — requiere Admin+.
 
     La respuesta devuelve el producto con is_active=False,
     confirmando visualmente que fue desactivado.

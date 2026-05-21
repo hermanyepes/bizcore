@@ -28,17 +28,20 @@ from app.core.limiter import limiter
 from app.core.security import (
     create_access_token,
     create_refresh_token,
+    hash_password,
     verify_password,
 )
 from app.crud.refresh_token import (
     create_refresh_token_db,
     get_valid_refresh_token,
+    revoke_all_user_tokens,
     revoke_refresh_token,
 )
 from app.crud.user import get_user_by_email
-from app.dependencies import get_db
+from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.schemas.auth import (
+    ChangePasswordRequest,
     LoginRequest,
     LogoutRequest,
     RefreshRequest,
@@ -234,3 +237,48 @@ async def logout(
     await revoke_refresh_token(db, stored_token)
 
     return {"message": "Sesión cerrada exitosamente"}
+
+
+# ============================================================
+# POST /auth/change-password
+# ============================================================
+
+
+@router.post("/change-password", status_code=status.HTTP_200_OK)
+@limiter.limit(settings.AUTHENTICATED_RATE_LIMIT)
+async def change_password(
+    request: Request,
+    data: ChangePasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, str]:
+    """
+    Cambia la contraseña del usuario autenticado. Cierra HU-005.
+
+    POST /api/v1/auth/change-password
+    Body: {"current_password": "...", "new_password": "..."}
+    Requiere: JWT válido (cualquier rol)
+
+    Seguridad en dos pasos:
+    1. Verificar current_password — el usuario prueba que sabe la contraseña actual.
+       Sin esto, un atacante con acceso al dispositivo podría cambiar la contraseña.
+    2. Revocar TODOS los refresh tokens — fuerza re-login en todos los dispositivos.
+       Si un atacante robó un refresh token, queda inútil al instante.
+
+    El cliente debe hacer logout y redirigir a /login tras recibir 200.
+    """
+    # Paso 1: verificar la contraseña actual
+    if not verify_password(data.current_password, current_user.password_hash or ""):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Contraseña actual incorrecta.",
+        )
+
+    # Paso 2: actualizar el hash en la BD
+    current_user.password_hash = hash_password(data.new_password)
+    await db.commit()
+
+    # Paso 3: revocar todos los refresh tokens — fuerza re-login en todos los dispositivos
+    await revoke_all_user_tokens(db, current_user.document_id)
+
+    return {"message": "Contraseña actualizada. Inicia sesión de nuevo."}

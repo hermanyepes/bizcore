@@ -23,6 +23,7 @@
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -43,6 +44,17 @@ class Settings(BaseSettings):
     # Obligatoria: sin BD no hay aplicación
     # Formato: postgresql+asyncpg://usuario:contraseña@host:puerto/nombre_bd
     DATABASE_URL: str
+
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def reject_placeholder_url(cls, v: str) -> str:
+        # Falla rápido si alguien arranca con el .env.example sin editar
+        if "CAMBIA_" in v:
+            raise ValueError(
+                "DATABASE_URL contiene el placeholder 'CAMBIA_'. "
+                "Edita .env con tus credenciales reales antes de arrancar."
+            )
+        return v
 
     # --- Seguridad JWT ---
     # Obligatoria: sin clave secreta no podemos firmar tokens
@@ -78,10 +90,21 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: list[str] = []
 
     # --- Entorno de ejecución ---
-    # Controla comportamientos que solo deben estar activos en desarrollo.
+    # OBLIGATORIO: no tiene valor por defecto para forzar decisión explícita.
     # Valores válidos: "development" | "production"
     # En producción, deshabilita /docs y /redoc para evitar reconocimiento.
-    ENVIRONMENT: str = "development"
+    # Añadir al .env: ENVIRONMENT=development
+    ENVIRONMENT: str
+
+    @field_validator("ENVIRONMENT")
+    @classmethod
+    def validate_environment(cls, v: str) -> str:
+        if v not in ("development", "production"):
+            raise ValueError(
+                f"ENVIRONMENT debe ser 'development' o 'production', recibido: '{v}'. "
+                "Revisa tu archivo .env."
+            )
+        return v
 
     # --- Configuración del archivo .env ---
     # model_config le dice a pydantic-settings CÓMO leer la configuración.

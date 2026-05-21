@@ -28,10 +28,13 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.router import router as api_router
 from app.core.config import settings
@@ -41,14 +44,17 @@ from app.core.exception_handlers import (
     inactive_resource_handler,
     insufficient_stock_handler,
     not_found_handler,
+    permission_denied_handler,
 )
 from app.core.exceptions import (
     AlreadyExistsError,
     InactiveResourceError,
     InsufficientStockError,
     NotFoundError,
+    PermissionDeniedError,
 )
 from app.core.limiter import limiter
+from app.dependencies import get_db
 
 # True cuando ENVIRONMENT="production" en .env (o variable de entorno del sistema).
 # Se define aquí para que lifespan y FastAPI() puedan usarlo sin dependencia implícita.
@@ -118,6 +124,7 @@ app.add_exception_handler(NotFoundError, not_found_handler)
 app.add_exception_handler(AlreadyExistsError, already_exists_handler)
 app.add_exception_handler(InactiveResourceError, inactive_resource_handler)
 app.add_exception_handler(InsufficientStockError, insufficient_stock_handler)
+app.add_exception_handler(PermissionDeniedError, permission_denied_handler)
 
 
 # ============================================================
@@ -151,6 +158,24 @@ async def add_security_headers(request, call_next):
     )
     # Al navegar a otro sitio, solo envía el origen (bizcore.com), nunca la URL completa
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # connect-src: incluye los orígenes CORS para que el fetch del frontend no sea bloqueado
+    connect_origins = " ".join(settings.ALLOWED_ORIGINS)
+    csp_connect_src = f"'self' {connect_origins}".strip() if connect_origins else "'self'"
+    # 'unsafe-inline' en style-src: Angular inyecta estilos inline en host bindings y
+    # componentes con encapsulación Emulated. Sin esta directiva los componentes se rompen.
+    # Deuda técnica (A-04): endurecer con nonces CSP Level 3 cuando el CLI de Angular
+    # genere el hash/nonce automáticamente en ng build.
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data:; "
+        f"connect-src {csp_connect_src}; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    )
     return response
 
 
@@ -182,16 +207,19 @@ async def root():
 
 
 @app.get("/health")
-async def health_check():
+async def health_check(db: AsyncSession = Depends(get_db)):
     """
     Health check endpoint.
 
     Los sistemas de monitoreo llaman esto periódicamente.
-    Si responde 200, el servicio está sano.
+    Ejecuta SELECT 1 contra la BD para verificar conectividad real.
+    200 = healthy, 503 = BD no responde.
     """
-    return {
-        "status": "healthy",
-        "database": settings.DATABASE_URL.split("@")[
-            -1
-        ],  # muestra host/db sin credenciales
-    }
+    try:
+        await db.execute(text("SELECT 1"))
+        return {"status": "healthy", "database": "ok"}
+    except Exception:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "database": "unreachable"},
+        )

@@ -182,7 +182,27 @@ async def admin_user(db: AsyncSession):
         full_name="Admin Test",
         email="admin@test.com",
         role="Administrador",
-        password_hash=hash_password("Admin1234"),
+        password_hash=hash_password("TestAdmin@42"),
+        is_active=True,
+        join_date=datetime.now(UTC),
+        created_at=datetime.now(UTC),
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@pytest.fixture
+async def second_admin_user(db: AsyncSession):
+    """Segundo usuario Administrador para probar restricciones entre pares."""
+    user = User(
+        document_id="1000000002",
+        document_type="CC",
+        full_name="Admin Test 2",
+        email="admin2@test.com",
+        role="Administrador",
+        password_hash=hash_password("TestAdmin2@42"),
         is_active=True,
         join_date=datetime.now(UTC),
         created_at=datetime.now(UTC),
@@ -231,7 +251,7 @@ async def admin_token(client: AsyncClient, admin_user: User) -> str:
     """Token JWT válido de un Administrador."""
     response = await client.post(
         "/api/v1/auth/login",
-        json={"email": "admin@test.com", "password": "Admin1234"},
+        json={"email": "admin@test.com", "password": "TestAdmin@42"},
     )
     assert response.status_code == 200, f"Login de admin falló: {response.json()}"
     return response.json()["access_token"]
@@ -242,7 +262,7 @@ async def admin_refresh_token(client: AsyncClient, admin_user: User) -> str:
     """Refresh token válido de un Administrador (para tests de /refresh y /logout)."""
     response = await client.post(
         "/api/v1/auth/login",
-        json={"email": "admin@test.com", "password": "Admin1234"},
+        json={"email": "admin@test.com", "password": "TestAdmin@42"},
     )
     assert response.status_code == 200, f"Login de admin falló: {response.json()}"
     return response.json()["refresh_token"]
@@ -284,6 +304,78 @@ async def employee_token(client: AsyncClient, employee_user: User) -> str:
         json={"email": "empleado@test.com", "password": "Empleado1234"},
     )
     assert response.status_code == 200, f"Login de empleado falló: {response.json()}"
+    return response.json()["access_token"]
+
+
+@pytest.fixture
+async def superadmin_user(db: AsyncSession):
+    """
+    Usuario Superadmin disponible en la BD de prueba.
+
+    Útil para probar que solo Superadmin puede crear Administradores
+    y modificar usuarios con rol Superadmin.
+    """
+    user = User(
+        document_id="9000000000",
+        document_type="CC",
+        full_name="Superadmin Test",
+        email="superadmin@test.com",
+        role="Superadmin",
+        password_hash=hash_password("Superadmin@42"),
+        is_active=True,
+        join_date=datetime.now(UTC),
+        created_at=datetime.now(UTC),
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@pytest.fixture
+async def supervisor_user(db: AsyncSession):
+    """
+    Usuario Supervisor disponible en la BD de prueba.
+
+    Útil para probar que el Supervisor puede gestionar productos,
+    inventario y proveedores, pero no el módulo de usuarios.
+    """
+    user = User(
+        document_id="3000000003",
+        document_type="CC",
+        full_name="Supervisor Test",
+        email="supervisor@test.com",
+        role="Supervisor",
+        password_hash=hash_password("Supervisor@42"),
+        is_active=True,
+        join_date=datetime.now(UTC),
+        created_at=datetime.now(UTC),
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@pytest.fixture
+async def superadmin_token(client: AsyncClient, superadmin_user: User) -> str:
+    """Token JWT válido de un Superadmin."""
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "superadmin@test.com", "password": "Superadmin@42"},
+    )
+    assert response.status_code == 200, f"Login de superadmin falló: {response.json()}"
+    return response.json()["access_token"]
+
+
+@pytest.fixture
+async def supervisor_token(client: AsyncClient, supervisor_user: User) -> str:
+    """Token JWT válido de un Supervisor."""
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "supervisor@test.com", "password": "Supervisor@42"},
+    )
+    assert response.status_code == 200, f"Login de supervisor falló: {response.json()}"
     return response.json()["access_token"]
 
 

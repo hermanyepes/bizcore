@@ -41,7 +41,7 @@ async def test_login_exitoso_devuelve_access_y_refresh_token(
     """
     response = await client.post(
         "/api/v1/auth/login",
-        json={"email": "admin@test.com", "password": "Admin1234"},
+        json={"email": "admin@test.com", "password": "TestAdmin@42"},
     )
 
     assert response.status_code == 200
@@ -69,7 +69,7 @@ async def test_login_email_inexistente_devuelve_401(client: AsyncClient):
     """
     response = await client.post(
         "/api/v1/auth/login",
-        json={"email": "noexiste@test.com", "password": "Admin1234"},
+        json={"email": "noexiste@test.com", "password": "TestAdmin@42"},
     )
 
     assert response.status_code == 401
@@ -134,7 +134,7 @@ async def test_login_email_formato_invalido_devuelve_422(client: AsyncClient):
     """Email malformado → 422. Pydantic valida el formato antes del endpoint."""
     response = await client.post(
         "/api/v1/auth/login",
-        json={"email": "esto-no-es-un-email", "password": "Admin1234"},
+        json={"email": "esto-no-es-un-email", "password": "TestAdmin@42"},
     )
     assert response.status_code == 422
 
@@ -150,13 +150,13 @@ async def test_login_rate_limit_bloquea_al_sexto_intento(
     for _ in range(5):
         response = await client.post(
             "/api/v1/auth/login",
-            json={"email": "admin@test.com", "password": "Admin1234"},
+            json={"email": "admin@test.com", "password": "TestAdmin@42"},
         )
         assert response.status_code == 200
 
     response = await client.post(
         "/api/v1/auth/login",
-        json={"email": "admin@test.com", "password": "Admin1234"},
+        json={"email": "admin@test.com", "password": "TestAdmin@42"},
     )
     assert response.status_code == 429
 

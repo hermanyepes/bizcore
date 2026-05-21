@@ -517,3 +517,52 @@ async def test_listar_productos_page_size_excesivo_devuelve_422(
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert response.status_code == 422
+
+
+# ============================================================
+# Column-level security — HU-022
+# ============================================================
+
+
+async def test_product_response_for_employee_excludes_cost(
+    client: httpx.AsyncClient,
+    employee_token: str,
+    product: Product,
+) -> None:
+    """
+    GET /products con token de Empleado devuelve ProductBaseResponse:
+    cost_price y margin NO deben aparecer en el JSON.
+    """
+    response = await client.get(
+        "/api/v1/products/",
+        headers={"Authorization": f"Bearer {employee_token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] >= 1
+    first = data["items"][0]
+    assert "cost_price" not in first, "Empleado no debe ver cost_price"
+    assert "margin" not in first, "Empleado no debe ver margin"
+
+
+async def test_product_response_for_supervisor_includes_cost(
+    client: httpx.AsyncClient,
+    supervisor_token: str,
+    product: Product,
+) -> None:
+    """
+    GET /products con token de Supervisor devuelve ProductDetailResponse:
+    cost_price y margin SÍ deben aparecer en el JSON (aunque sean null).
+    """
+    response = await client.get(
+        "/api/v1/products/",
+        headers={"Authorization": f"Bearer {supervisor_token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] >= 1
+    first = data["items"][0]
+    assert "cost_price" in first, "Supervisor debe ver cost_price"
+    assert "margin" in first, "Supervisor debe ver margin"

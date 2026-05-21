@@ -31,7 +31,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -111,6 +111,15 @@ class Order(Base):
     # nullable=True: no es obligatorio justificar cada pedido.
     # ----------------------------------------------------------
     notes: Mapped[str | None] = mapped_column(String(300), nullable=True)
+
+    # ----------------------------------------------------------
+    # Razón de cancelación — requerida cuando status → CANCELADA (HU-046)
+    #
+    # El Empleado DEBE proveerla al cancelar su propia orden.
+    # El Supervisor+ puede cancelar sin razón (pero se recomienda).
+    # Text permite razones largas sin límite artificial.
+    # ----------------------------------------------------------
+    cancel_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ----------------------------------------------------------
     # Timestamp de creación

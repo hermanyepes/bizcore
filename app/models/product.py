@@ -117,3 +117,13 @@ class Product(Base):
         onupdate=func.now(),
         nullable=True,
     )
+
+    # ----------------------------------------------------------
+    # Campos de costo y margen — column-level security (HU-022)
+    #
+    # Solo visibles para Supervisor+ en las respuestas de la API.
+    # El Empleado recibe ProductBaseResponse que excluye estos campos.
+    # nullable=True: productos legacy pueden no tener costo registrado.
+    # ----------------------------------------------------------
+    cost_price: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    margin: Mapped[int | None] = mapped_column(Integer, nullable=True)

@@ -36,6 +36,7 @@ from app.core.exceptions import (
     InactiveResourceError,
     InsufficientStockError,
     NotFoundError,
+    PermissionDeniedError,
 )
 
 
@@ -84,6 +85,19 @@ async def insufficient_stock_handler(
         status_code=400,
         content={
             "error": "insufficient_stock",
+            "detail": str(exc),
+        },
+    )
+
+
+async def permission_denied_handler(
+    request: Request, exc: PermissionDeniedError
+) -> JSONResponse:
+    """Traduce PermissionDeniedError → HTTP 403 Forbidden."""
+    return JSONResponse(
+        status_code=403,
+        content={
+            "error": "permission_denied",
             "detail": str(exc),
         },
     )

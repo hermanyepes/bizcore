@@ -15,30 +15,41 @@
 # Para los GET, sí va directo al bodeguero — solo lectura, sin
 # lógica de negocio, sin efectos secundarios.
 #
+# PERMISOS POR ACCIÓN (ver docs/roles/matriz-permisos.md sección 2.3):
+#   GET  /inventory        → Supervisor+ (require_supervisor)
+#   GET  /inventory/{id}   → Supervisor+
+#   POST con ENTRADA/SALIDA→ Supervisor+ (require_supervisor)
+#   POST con AJUSTE        → Admin+ solo (validado en el cuerpo del endpoint)
+#
+# ¿POR QUÉ AJUSTE requiere más privilegio que ENTRADA/SALIDA?
+# ENTRADA y SALIDA son operaciones operativas del día a día.
+# AJUSTE es una corrección contable — modifica el stock a un valor
+# absoluto que puede no justificarse por ningún movimiento previo.
+# Es equivalente a una "corrección de asiento" en contabilidad —
+# requiere mayor privilegio para evitar manipulaciones.
+#
 # FLUJO DEL POST:
 #   1. FastAPI recibe POST /api/v1/inventory
-#   2. Ejecuta get_db() y get_current_user() vía Depends
-#   3. get_current_user() verifica JWT → devuelve el usuario logueado
+#   2. Ejecuta get_db() y require_supervisor() vía Depends
+#   3. Para AJUSTE: verifica adicionalmente que el rol sea Admin+
 #   4. El endpoint extrae current_user.document_id (el "quién")
 #   5. Llama al servicio pasando datos + document_id
 #   6. El servicio valida, calcula y coordina CRUD + stock
 #   7. FastAPI serializa la respuesta con response_model
 #
-# ¿POR QUÉ CUALQUIER USUARIO AUTENTICADO PUEDE REGISTRAR MOVIMIENTOS?
-# En una bodega real, los empleados son quienes reciben mercancía
-# (ENTRADA) y despachan pedidos (SALIDA). No tiene sentido restringir
-# esto solo al Administrador — ellos también trabajan con el inventario.
-#
 # ============================================================
 
 import math
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError
+from app.constants import UserRole
+from app.core.config import settings
+from app.core.exceptions import NotFoundError, PermissionDeniedError
+from app.core.limiter import limiter
 from app.crud import inventory_movement as inventory_crud
-from app.dependencies import get_current_user, get_db
+from app.dependencies import get_db, require_supervisor
 from app.models.user import User
 from app.schemas.inventory_movement import (
     InventoryMovementCreate,
@@ -56,13 +67,15 @@ router = APIRouter(prefix="/inventory", tags=["inventory"])
 # GET /api/v1/inventory — Listar movimientos (paginado)
 # ============================================================
 @router.get("/", response_model=InventoryMovementPaginated)
+@limiter.limit(settings.AUTHENTICATED_RATE_LIMIT)
 async def list_movements(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     page: int = Query(default=1, ge=1),  # mínimo página 1
     page_size: int = Query(default=10, ge=1, le=100),  # entre 1 y 100 registros
     product_id: int | None = None,
     movement_type: str | None = Query(default=None),  # 'ENTRADA'/'SALIDA'/None
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_supervisor),  # Supervisor+ puede ver inventario
 ) -> InventoryMovementPaginated:
     """
     Lista movimientos de inventario con paginación y filtros opcionales.
@@ -71,6 +84,7 @@ async def list_movements(
     GET /api/v1/inventory?product_id=5
     GET /api/v1/inventory?movement_type=ENTRADA
     GET /api/v1/inventory?product_id=5&movement_type=SALIDA
+    Requiere: JWT con rol Supervisor, Administrador o Superadmin
     """
     skip = (page - 1) * page_size
 
@@ -97,15 +111,18 @@ async def list_movements(
 # GET /api/v1/inventory/{movement_id} — Obtener un movimiento
 # ============================================================
 @router.get("/{movement_id}", response_model=InventoryMovementResponse)
+@limiter.limit(settings.AUTHENTICATED_RATE_LIMIT)
 async def get_movement(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     movement_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_supervisor),  # Supervisor+ puede ver inventario
 ) -> InventoryMovementResponse:
     """
     Devuelve los datos de un movimiento específico.
 
     GET /api/v1/inventory/1
+    Requiere: JWT con rol Supervisor, Administrador o Superadmin
     """
     movement = await inventory_crud.get_movement_by_id(db, movement_id)
 
@@ -121,17 +138,19 @@ async def get_movement(
 @router.post(
     "/", response_model=InventoryMovementResponse, status_code=status.HTTP_201_CREATED
 )
+@limiter.limit("30/minute")
 async def register_movement(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     data: InventoryMovementCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_supervisor),  # mínimo Supervisor para ENTRADA/SALIDA
 ) -> InventoryMovementResponse:
     """
     Registra un movimiento de inventario y actualiza el stock del producto.
 
     POST /api/v1/inventory
     Body: InventoryMovementCreate (JSON)
-    Requiere: JWT válido (cualquier rol)
+    Requiere: JWT con rol Supervisor+ para ENTRADA/SALIDA, Admin+ para AJUSTE
 
     Ejemplos de body:
       {"product_id": 1, "movement_type": "ENTRADA", "quantity": 50}
@@ -139,20 +158,24 @@ async def register_movement(
       {"product_id": 1, "movement_type": "AJUSTE",  "quantity": 45, "notes": "Conteo físico"}
 
     Posibles errores:
+      403 → Supervisor intenta registrar un AJUSTE (requiere Admin+)
       404 → el producto no existe
       400 → el producto está inactivo, o stock insuficiente para SALIDA
 
-    ¿Por qué llamamos al servicio y no al CRUD directamente?
-    Porque registrar un movimiento no es una operación simple de BD.
-    Requiere: validar el producto, calcular el nuevo stock, crear el
-    movimiento Y actualizar el stock. Eso es lógica de negocio —
-    responsabilidad del servicio, no del endpoint ni del CRUD.
-
     ¿Cómo llega `created_by_id` al servicio?
     El endpoint extrae `current_user.document_id` del objeto User
-    que devuelve `get_current_user`. Ese document_id es la cédula
+    que devuelve `require_supervisor`. Ese document_id es la cédula
     del usuario logueado — nunca viene del body del cliente.
     """
+    # AJUSTE requiere Admin+ — es una corrección contable, no una operación de bodega
+    if data.movement_type == "AJUSTE" and current_user.role not in (
+        UserRole.SUPERADMIN,
+        UserRole.ADMIN,
+    ):
+        raise PermissionDeniedError(
+            "Solo Administrador o Superadmin puede registrar movimientos de tipo AJUSTE."
+        )
+
     movement = await inventory_service.register_movement(
         db=db,
         data=data,

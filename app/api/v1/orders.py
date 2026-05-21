@@ -23,28 +23,35 @@
 #   DELETE /orders/{id} → Mesero va directo al bodeguero (crud)
 #                         Solo cambia status a "CANCELADO".
 #
-# PERMISOS:
-#   Crear pedidos       → cualquier usuario autenticado
-#                         (los empleados también gestionan compras)
-#   Ver pedidos         → cualquier usuario autenticado
-#   Cambiar status      → solo Administrador
-#   Cancelar            → solo Administrador
+# PERMISOS (ver docs/roles/matriz-permisos.md sección 2.5):
+#   Todos los endpoints → require_employee (cualquier usuario autenticado)
+#
+# NOTA sobre row-level security:
+#   La matriz define restricciones más finas por rol (el Empleado
+#   solo ve sus propias órdenes, solo puede cancelar las suyas, etc.)
+#   Esas restricciones se implementan en el SERVICE en la Sesión 5
+#   del roadmap. Por ahora el endpoint-level permite acceso a
+#   cualquier usuario autenticado.
 #
 # ============================================================
 
 import math
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError
+from app.constants import UserRole
+from app.core.config import settings
+from app.core.exceptions import NotFoundError, PermissionDeniedError
+from app.core.limiter import limiter
 from app.crud import order as order_crud
-from app.dependencies import get_current_user, get_db, require_admin
+from app.dependencies import get_db, require_employee
 from app.models.user import User
 from app.schemas.order import (
     OrderCreate,
     OrderPaginated,
     OrderResponse,
+    OrderStatusUpdate,
     OrderUpdate,
 )
 from app.services import order as order_service
@@ -58,25 +65,33 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 # GET /api/v1/orders — Listar pedidos (paginado)
 # ============================================================
 @router.get("/", response_model=OrderPaginated)
+@limiter.limit(settings.AUTHENTICATED_RATE_LIMIT)
 async def list_orders(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     page: int = Query(default=1, ge=1),  # mínimo página 1
     page_size: int = Query(default=10, ge=1, le=100),  # entre 1 y 100 registros
     supplier_id: int | None = None,
     status: str | None = Query(default=None),  # 'PENDIENTE'/'RECIBIDO'/'CANCELADO'
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_employee),  # cualquier usuario autenticado
 ) -> OrderPaginated:
     """
     Lista pedidos de compra con paginación y filtros opcionales.
 
+    Row-level security (HU-043):
+    - Empleado    → solo sus propias órdenes (WHERE created_by_id = document_id)
+    - Supervisor+ → todas las órdenes sin restricción
+
     GET /api/v1/orders?page=1&page_size=10
     GET /api/v1/orders?status=PENDIENTE
-    GET /api/v1/orders?supplier_id=3&status=RECIBIDO
+    GET /api/v1/orders?supplier_id=3&status=APROBADA
+    Requiere: JWT válido (cualquier rol)
     """
     skip = (page - 1) * page_size
 
-    orders, total = await order_crud.get_orders(
-        db,
+    orders, total = await order_service.list_orders_for_user(
+        db=db,
+        current_user=current_user,
         skip=skip,
         limit=page_size,
         supplier_id=supplier_id,
@@ -98,27 +113,34 @@ async def list_orders(
 # GET /api/v1/orders/{order_id} — Obtener un pedido
 # ============================================================
 @router.get("/{order_id}", response_model=OrderResponse)
+@limiter.limit(settings.AUTHENTICATED_RATE_LIMIT)
 async def get_order(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     order_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_employee),  # cualquier usuario autenticado
 ) -> OrderResponse:
     """
     Devuelve los datos completos de un pedido, incluyendo todos sus ítems.
 
-    GET /api/v1/orders/1
+    Row-level security (HU-043):
+    - Empleado que intenta ver una orden ajena → 403.
+    - Supervisor+ puede ver cualquier orden.
 
-    La respuesta incluye:
-    - Encabezado del pedido (proveedor, status, notas, fecha)
-    - Lista de ítems con producto, cantidad, precio unitario y subtotal
+    GET /api/v1/orders/1
+    Requiere: JWT válido (cualquier rol)
 
     Si order_id no existe → 404.
-    Si el token JWT es inválido o falta → 401.
+    Si el Empleado intenta ver una orden ajena → 403.
     """
     order = await order_crud.get_order_by_id(db, order_id)
 
     if order is None:
         raise NotFoundError("Pedido", order_id)
+
+    if current_user.role == UserRole.EMPLOYEE:
+        if order.created_by_id != current_user.document_id:
+            raise PermissionDeniedError("No tienes acceso a esta orden")
 
     return OrderResponse.model_validate(order)
 
@@ -127,10 +149,12 @@ async def get_order(
 # POST /api/v1/orders — Crear pedido (cualquier usuario autenticado)
 # ============================================================
 @router.post("/", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 async def create_order(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     data: OrderCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_employee),  # cualquier usuario autenticado
 ) -> OrderResponse:
     """
     Crea un pedido de compra con todos sus ítems.
@@ -162,11 +186,6 @@ async def create_order(
       404 → proveedor o producto no existe
       400 → proveedor inactivo, producto inactivo, o stock insuficiente
 
-    ¿Por qué llamamos al servicio y no al CRUD directamente?
-    Crear un pedido coordina múltiples tablas, calcula precios y
-    debe ocurrir como transacción atómica. Eso es lógica de negocio —
-    responsabilidad del servicio, no del endpoint.
-
     ¿Cómo llega `created_by_id` al servicio?
     El endpoint extrae `current_user.document_id` del JWT.
     Nunca viene del body — el cliente no elige quién firma el pedido.
@@ -181,36 +200,67 @@ async def create_order(
 
 
 # ============================================================
-# PUT /api/v1/orders/{order_id} — Actualizar pedido (solo Administrador)
+# PUT /api/v1/orders/{order_id}/status — Cambiar estado (máquina de estados)
+# ============================================================
+@router.put("/{order_id}/status", response_model=OrderResponse)
+@limiter.limit("30/minute")
+async def update_order_status(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
+    order_id: int,
+    data: OrderStatusUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_employee),
+) -> OrderResponse:
+    """
+    Cambia el estado de una orden aplicando la máquina de estados completa.
+
+    PUT /api/v1/orders/1/status
+    Body: {"status": "APROBADA"} | {"status": "CANCELADA", "cancel_reason": "..."}
+
+    Transiciones válidas (ver docs/diagramas/flujo-orden.md):
+      PENDIENTE → APROBADA   (Supervisor / Admin / Superadmin)
+      PENDIENTE → CANCELADA  (cualquier autenticado — row-level en service)
+      APROBADA  → ENTREGADA  (Supervisor / Admin / Superadmin)
+      APROBADA  → CANCELADA  (Supervisor / Admin / Superadmin)
+
+    Restricciones de rol (HU-043, HU-046):
+    - Empleado: solo PENDIENTE → CANCELADA sobre su propia orden con cancel_reason.
+    - Cualquier otra transición por parte del Empleado → 403.
+    - Orden ajena para el Empleado → 403.
+
+    Si order_id no existe → 404.
+    """
+    order = await order_service.update_status(
+        db=db,
+        order_id=order_id,
+        new_status=data.status,
+        current_user=current_user,
+        cancel_reason=data.cancel_reason,
+    )
+    return OrderResponse.model_validate(order)
+
+
+# ============================================================
+# PUT /api/v1/orders/{order_id} — Actualizar pedido (legacy)
 # ============================================================
 @router.put("/{order_id}", response_model=OrderResponse)
+@limiter.limit("30/minute")
 async def update_order(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     order_id: int,
     data: OrderUpdate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    current_user: User = Depends(require_employee),  # cualquier autenticado — row-level en Sesión 5
 ) -> OrderResponse:
     """
-    Actualiza el status y/o las notas de un pedido.
+    Actualiza las notas de un pedido existente.
 
     PUT /api/v1/orders/1
-    Body: OrderUpdate (JSON)
-    Requiere: JWT con rol Administrador
+    Body: { "notes": "texto libre" }
+    Requiere: JWT válido (cualquier rol)
 
-    Ejemplos de uso:
-    - Completar un pedido:   {"status": "COMPLETADO"}
-    - Agregar una nota:      {"notes": "Entregado el 2026-03-10"}
-    - Ambas a la vez:        {"status": "COMPLETADO", "notes": "Entregado OK"}
-
-    ¿Por qué solo el Administrador puede cambiar el status?
-    Cambiar un pedido a COMPLETADO o CANCELADO es una decisión
-    administrativa — confirma que se recibió la mercancía o que
-    se revocó el pedido. No es una acción de cualquier empleado.
-
-    ¿Por qué no se pueden actualizar los ítems?
-    Los ítems son históricos. El precio y la cantidad quedan congelados
-    al momento de crear el pedido. Modificarlos equivale a falsificar
-    el registro de compra. Si el pedido fue mal → cancelar y crear uno nuevo.
+    Para cambios de estado usar PUT /api/v1/orders/{id}/status,
+    que implementa la máquina de estados con validación de transiciones.
 
     Si order_id no existe → 404.
     """
@@ -223,35 +273,29 @@ async def update_order(
 
 
 # ============================================================
-# DELETE /api/v1/orders/{order_id} — Cancelar pedido (solo Administrador)
+# DELETE /api/v1/orders/{order_id} — Cancelar pedido
 # ============================================================
 @router.delete("/{order_id}", response_model=OrderResponse)
+@limiter.limit("30/minute")
 async def cancel_order(
+    request: Request,  # requerido por slowapi para leer la IP del cliente
     order_id: int,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    current_user: User = Depends(require_employee),  # cualquier autenticado — row-level en Sesión 5
 ) -> OrderResponse:
     """
-    Cancela un pedido cambiando su status a "CANCELADO".
+    Cancela un pedido cambiando su status a "CANCELADA".
 
     DELETE /api/v1/orders/1
-    Requiere: JWT con rol Administrador
+    Requiere: JWT válido (cualquier rol)
+
+    Acceso directo a cancelación sin pasar por la máquina de estados.
+    No registra audit_log ni valida cancel_reason — para eso usar
+    PUT /api/v1/orders/{id}/status con status="CANCELADA".
 
     ¿Por qué no borramos la fila de la BD?
-    Los pedidos de compra son registros auditables. Un pedido
-    cancelado sigue siendo información de negocio valiosa:
-    ¿cuántos pedidos se cancelaron? ¿con qué proveedor?
-    El historial debe conservarse intacto.
-
-    ¿Se restaura el stock al cancelar?
-    En esta versión, no. Si un pedido se cancela, el administrador
-    debe registrar manualmente una ENTRADA de inventario para
-    restablecer el stock de los productos afectados. Esta es una
-    decisión de alcance — en sistemas más complejos, la cancelación
-    revertiría el stock automáticamente.
-
-    La respuesta devuelve el pedido con status="CANCELADO",
-    confirmando visualmente que fue cancelado.
+    Los pedidos son registros auditables. Un pedido cancelado sigue
+    siendo información de negocio valiosa. El historial se conserva.
 
     Si order_id no existe → 404.
     """
